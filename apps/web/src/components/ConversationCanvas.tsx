@@ -23,6 +23,7 @@ import { ArtifactPreviewSheet } from "./ArtifactPreviewSheet";
 import { Composer } from "./Composer";
 import { StatusPill } from "./patterns";
 import { RosterList } from "./RosterList";
+import { RunDiagnostics } from "./RunDiagnostics";
 import { Timeline } from "./Timeline";
 import { TodoPanel } from "./TodoPanel";
 import { UsagePanel } from "./UsagePanel";
@@ -177,6 +178,7 @@ export function ConversationCanvas({
       error?: string;
       notices?: string[];
       approval?: { callId: string; toolName: string; reason: string };
+      ask?: { callId: string; questions: unknown[] };
       ordered?: ReadonlyArray<{ type: "text" | "thinking"; text: string }>;
     }> = [];
     for (const [runId, t] of Object.entries(transients)) {
@@ -193,6 +195,7 @@ export function ConversationCanvas({
         notices: t.notices,
         ordered: t.ordered,
         ...(t.approval ? { approval: t.approval } : {}),
+        ...(t.ask ? { ask: t.ask } : {}),
       });
     }
     return bubbles;
@@ -229,16 +232,18 @@ export function ConversationCanvas({
 
   // The conversation's agent (1:1 collapse — exactly one)
   const primaryAgent = agent;
+  // The agent's id lives on `memberId` (SenderRef.agentId is optional); the
+  // backend keys every agent-scoped lookup by this id.
+  const primaryAgentId = primaryAgent?.agentId ?? primaryAgent?.memberId;
 
   // Backend kind badge: agentId → agents.backendKind (D2/D3). Drives the
   // header badge; CLI backends (claude/pi/omp) run with CLI-session
   // context continuity (ADR 0002).
   const { data: agents } = useAgentList();
   const primaryKind = useMemo(() => {
-    const id = primaryAgent?.agentId;
-    if (!id) return undefined;
-    return agents?.find((a) => a.id === id)?.backendKind;
-  }, [agents, primaryAgent]);
+    if (!primaryAgentId) return undefined;
+    return agents?.find((a) => a.id === primaryAgentId)?.backendKind;
+  }, [agents, primaryAgentId]);
 
   const handleExport = useCallback(async () => {
     const md = await api.exportConversation(conversationId);
@@ -343,19 +348,35 @@ export function ConversationCanvas({
           </div>
         </div>
         {primaryAgent && (
-          <div className="flex items-center gap-2 mt-2">
+          <div className="mt-2 flex items-center gap-2">
             <span className="text-sm font-medium text-(--ink-strong)">
               {primaryAgent?.displayName ?? primaryAgent?.agentId ?? "Agent"}
             </span>
             {primaryKind && (
-              <Badge
-                variant="outline"
-                className="text-[10px] px-1.5 py-0 h-4 font-mono text-(--mute)"
-              >
+              <span className="rounded-sm border border-(--hairline) px-1.5 py-0.5 font-mono text-[10px] text-(--mute)">
                 {primaryKind}
-              </Badge>
+              </span>
             )}
             <span className="font-mono text-[10px] text-(--faint)">{conversationId}</span>
+            <span className="mx-1 h-3 w-px bg-(--hairline)" />
+            {/* Run-control chips: live binding + status */}
+            <span className="rounded-sm border border-(--hairline) bg-(--panel) px-1.5 py-0.5 font-mono text-[10px] text-(--body)">
+              conv_store
+            </span>
+            {busy && label && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    api.cancelAgentRun(currentRunId!).then(() => toast.success("Aborted"));
+                  }}
+                  className="rounded-sm border border-(--err)/40 px-2 py-0.5 font-mono text-[10px] uppercase tracking-kicker text-(--err) transition-colors hover:bg-(--err)/10"
+                >
+                  abort
+                </button>
+                <span className="font-mono text-[10px] text-(--primary)">{label}</span>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -425,8 +446,8 @@ export function ConversationCanvas({
 
       <div className="flex-1 flex min-h-0 relative">
         {/* Main scroll area */}
-        <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-[760px] p-6  pb-40">
+        <div ref={scrollRef} onScroll={handleScroll} className="flex-1 min-w-0 overflow-y-auto">
+          <div className="mx-auto max-w-[min(760px,100%)] w-full p-6  pb-40">
             {items.length === 0 ? (
               <div className="flex flex-col items-start justify-center py-24">
                 {primaryAgent && (
@@ -449,6 +470,15 @@ export function ConversationCanvas({
                   scrollContainerRef={scrollRef}
                   transients={transientBubbles}
                   onResolveApproval={resolveApproval}
+                  onResolveAsk={(runId, callId, answer) => {
+                    void api.resolveProductAsk({
+                      runId,
+                      callId,
+                      answer: answer as {
+                        answers: Array<{ id: string; selectedValues: string[]; freeText?: string }>;
+                      },
+                    });
+                  }}
                   artifactsByRunId={artifactsByRunId}
                   onPreviewArtifact={setPreviewArtifact}
                   onDownloadArtifact={handleDownloadArtifact}
@@ -472,6 +502,7 @@ export function ConversationCanvas({
         {/* Roster — desktop sidebar */}
         <aside className="hidden md:block shrink-0 w-72 border-l border-(--hairline) overflow-y-auto p-3">
           <RosterList agent={agent} />
+          <RunDiagnostics conversationId={conversationId} agentId={primaryAgentId} />
           <UsagePanel conversationId={conversationId} />
         </aside>
 
@@ -503,6 +534,7 @@ export function ConversationCanvas({
             aria-label="Members"
           >
             <RosterList agent={agent} onClose={() => setRosterOpen(false)} />
+            <RunDiagnostics conversationId={conversationId} agentId={primaryAgentId} />
             <UsagePanel conversationId={conversationId} />
           </aside>
         </>

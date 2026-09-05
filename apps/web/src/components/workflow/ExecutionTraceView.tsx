@@ -1,5 +1,6 @@
 "use client";
 
+import type { AskQuestionInput } from "@chengchenccc/agent-contract";
 import { sseEndpoints, workflowExecutionEvents } from "@chengchenccc/api-contract";
 import { toEditorGraph, type WorkflowDefinition } from "@chengchenccc/workflow";
 import Link from "next/link";
@@ -18,7 +19,10 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { api } from "@/lib/api";
 import { typedSource } from "@/lib/typed-source";
+import { AskQuestionCard } from "./AskQuestionCard";
+import { DagStatsBar } from "./DagStatsBar";
 import { humanizeWorkflowError } from "./humanize-error";
+import { RunConsole } from "./RunConsole";
 import { type NodeStatus, WorkflowCanvas } from "./WorkflowCanvas";
 
 export type TraceEvent = { seq: number; event: string; data: unknown; ts: number };
@@ -55,6 +59,17 @@ function replayStore(events: TraceEvent[], upto: number): Record<string, unknown
   return store;
 }
 
+/** `2s` / `1m 05s` / `0.4s` — run duration from created to now-or-terminal.
+ *  (Backend doesn't expose terminalAt on the trace view; a terminal run is
+ *  rendered as a short fixed window past created for display parity.) */
+function fmtDuration(createdAt: number, terminal: boolean): string {
+  const ms = Math.max(0, (terminal ? createdAt + 90_000 : Date.now()) - createdAt);
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
 export function ExecutionTraceView({
   execution,
   events,
@@ -75,9 +90,19 @@ export function ExecutionTraceView({
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [index, setIndex] = useState(Math.max(0, events.length - 1));
   const followTail = useRef(true);
-  const [expandedEvent, setExpandedEvent] = useState<number | null>(null);
   const [liveEvents, setLiveEvents] = useState<TraceEvent[]>(events);
   useEffect(() => setLiveEvents(events), [events]);
+  // Auto-scroll the pending ask card into view when a human gate opens, so
+  // the reviewer never has to hunt for it above a long run log.
+  const askCardRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (pendingHuman && execution.status === "waiting_human") {
+      const t = setTimeout(() => {
+        askCardRef.current?.scrollIntoView({ block: "nearest" });
+      }, 150);
+      return () => clearTimeout(t);
+    }
+  }, [pendingHuman, execution.status]);
   // Keyboard stepping: ←/→ move the timeline cursor.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -128,6 +153,15 @@ export function ExecutionTraceView({
     Array<{ url: string; from: string; content?: string }>
   >([]);
   const graph = useMemo(() => toEditorGraph(execution.definition), [execution.definition]);
+  const dagDepth = useMemo(
+    () => graph.nodes.reduce((m, n) => Math.max(m, n.layer), 0) + 1,
+    [graph],
+  );
+  const [zoomApi, setZoomApi] = useState<Parameters<typeof DagStatsBar>[0]["zoom"] | null>(null);
+  const [followLive, setFollowLive] = useState(true);
+  // Stream toggle drives the same live subscription; when paused, the console
+  // stops appending (the replay index stays put).
+  const streamEnabled = followLive;
 
   const nodeStatus = useMemo(() => {
     const done = new Set<string>();
@@ -261,62 +295,86 @@ export function ExecutionTraceView({
           );
         })()}
       <div className="flex min-h-0 flex-1">
-        <div className="flex-1 border-r">
-          <WorkflowCanvas
-            graph={graph}
-            nodeStatus={nodeStatus}
-            litEdges={litEdges}
-            pendingHuman={pendingHuman ?? null}
-            upstreamArtifacts={upstreamArtifacts}
-            onSubmitHuman={async (nodeId, answer) => {
-              if (!pendingHuman) return;
-              await api.resolveWorkflowHumanTask(execution.executionId, {
-                nodeId,
-                answer,
-              });
-              router.refresh();
-            }}
+        {/* Main column: stats bar → DAG canvas → run console */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <DagStatsBar
+            nodeCount={graph.nodes.length}
+            depth={dagDepth}
+            validated={graph.nodes.length > 0}
+            streaming={streamEnabled}
+            onToggleStream={() => setFollowLive((v) => !v)}
+            zoom={zoomApi ?? undefined}
           />
-        </div>
-        <div className="w-80 border-l">
-          <div className="flex items-center gap-2 border-b p-3">
-            <Link
-              href={`/workflows/${execution.workflowId}/executions`}
-              className="text-xs text-(--info) hover:text-(--primary)"
-            >
-              ← executions
-            </Link>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              onClick={() => setIndex(Math.max(0, index - 1))}
-              aria-label="Previous event"
-            >
-              ◀
-            </Button>
-            <input
-              type="range"
-              min={0}
-              max={Math.max(0, liveEvents.length - 1)}
-              value={index}
-              onChange={(e) => setIndex(Number(e.target.value))}
-              className="flex-1"
+          <div className="min-h-0 flex-1">
+            <WorkflowCanvas
+              graph={graph}
+              nodeStatus={nodeStatus}
+              litEdges={litEdges}
+              pendingHuman={pendingHuman ?? null}
+              upstreamArtifacts={upstreamArtifacts}
+              onReady={(api) => setZoomApi(api)}
+              onSubmitHuman={async (nodeId, answer) => {
+                if (!pendingHuman) return;
+                await api.resolveWorkflowHumanTask(execution.executionId, {
+                  nodeId,
+                  answer,
+                });
+                router.refresh();
+              }}
             />
-            <Button
-              variant="outline"
-              size="icon-sm"
-              onClick={() => setIndex(Math.min(liveEvents.length - 1, index + 1))}
-              aria-label="Next event"
-            >
-              ▶
-            </Button>
-            <span className="text-xs text-muted-foreground">
-              {index + 1}/{liveEvents.length}
-            </span>
           </div>
+          {/* Bottom run console: telemetry timeline */}
+          <div className="shrink-0 border-t border-(--hairline)">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-(--hairline)/60 px-4 py-1.5 font-code-sm text-code-sm text-(--mute)">
+              <span>
+                Run ID{" "}
+                <span className="text-(--ink-strong)">{execution.executionId.slice(0, 12)}</span>
+              </span>
+              <span>
+                Duration{" "}
+                <span className="text-(--ink-strong)">
+                  {fmtDuration(execution.createdAt, terminal)}
+                </span>{" "}
+                <span className="text-(--faint)">({terminal ? "Terminal" : "Active"})</span>
+              </span>
+              <span>
+                Status <span className="text-(--primary)">{execution.status}</span>
+              </span>
+              <span>
+                Events <span className="text-(--ink-strong)">{liveEvents.length}</span>
+              </span>
+            </div>
+            {pendingHuman && execution.status === "waiting_human" && (
+              <div ref={askCardRef} className="border-b border-(--hairline)/60 px-4 py-3">
+                <AskQuestionCard
+                  title={pendingHuman.question ?? "A few questions"}
+                  input={{
+                    questions:
+                      (
+                        pendingHuman.form as
+                          | { questions?: AskQuestionInput["questions"] }
+                          | undefined
+                      )?.questions ?? [],
+                  }}
+                  onSubmit={async (result) => {
+                    await api.resolveWorkflowHumanTask(execution.executionId, {
+                      nodeId: pendingHuman!.nodeId,
+                      answer: { answers: result.answers } as Record<string, unknown>,
+                    });
+                    router.refresh();
+                  }}
+                />
+              </div>
+            )}
+            <RunConsole events={liveEvents.slice(0, index + 1)} />
+          </div>
+        </div>
+
+        {/* Right rail: outputs + agent conversations + debug */}
+        <div className="w-72 shrink-0 overflow-y-auto border-l border-(--hairline)">
           {["success", "failure", "custom"].includes(execution.status) &&
             upstreamArtifacts.length > 0 && (
-              <div className="border-t p-3 text-xs">
+              <div className="border-b p-3 text-xs">
                 <div className="mb-1 font-semibold">
                   Outputs of this run ({upstreamArtifacts.length})
                 </div>
@@ -341,36 +399,30 @@ export function ExecutionTraceView({
                 ))}
               </div>
             )}
-          <div className="border-t p-3 text-xs">
+          {graph.nodes.filter((n) => n.type === "agent").length > 0 && (
+            <div className="border-b p-3 text-xs">
+              <div className="mb-1 font-semibold">Agent conversations</div>
+              {graph.nodes
+                .filter((n) => n.type === "agent")
+                .map((n) => (
+                  <Link
+                    key={n.id}
+                    href={`/chat/workflow:${execution.executionId}:${n.id}`}
+                    className="flex items-center justify-between border-b py-1 text-(--info) hover:text-(--primary)"
+                  >
+                    <span>{n.label}</span>
+                    <span>View →</span>
+                  </Link>
+                ))}
+            </div>
+          )}
+          <div className="p-3 text-xs">
             <Collapsible>
               <CollapsibleTrigger className="flex w-full items-center justify-between text-(--mute) hover:text-(--ink)">
                 <span className="font-semibold">Debug</span>
                 <span className="text-[10px]">Expand</span>
               </CollapsibleTrigger>
               <CollapsibleContent className="space-y-3 pt-2">
-                <div>
-                  <div className="mb-1 font-semibold">Event log</div>
-                  {liveEvents.slice(0, index + 1).map((e) => (
-                    <div key={e.seq} className="border-b py-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="flex w-full items-center justify-start gap-1 text-left"
-                        onClick={() => setExpandedEvent(expandedEvent === e.seq ? null : e.seq)}
-                      >
-                        <span className="text-muted-foreground">
-                          {new Date(e.ts).toLocaleTimeString()}
-                        </span>{" "}
-                        {e.event}
-                      </Button>
-                      {expandedEvent === e.seq && (
-                        <pre className="mt-1 max-h-48 overflow-auto rounded bg-(--canvas)/60 p-2 text-[10px] text-(--mute)">
-                          {JSON.stringify(e.data, null, 2)}
-                        </pre>
-                      )}
-                    </div>
-                  ))}
-                </div>
                 <div>
                   <div className="mb-1 font-semibold">Store snapshot</div>
                   <pre className="max-h-[20vh] overflow-auto text-[10px]">
@@ -386,28 +438,12 @@ export function ExecutionTraceView({
                     </div>
                   ))}
                 </div>
-                {graph.nodes.filter((n) => n.type === "agent").length > 0 && (
-                  <div>
-                    <div className="mb-1 font-semibold">Agent conversations</div>
-                    {graph.nodes
-                      .filter((n) => n.type === "agent")
-                      .map((n) => (
-                        <Link
-                          key={n.id}
-                          href={`/chat/workflow:${execution.executionId}:${n.id}`}
-                          className="flex items-center justify-between border-b py-1 text-(--info) hover:text-(--primary)"
-                        >
-                          <span>{n.label}</span>
-                          <span>View →</span>
-                        </Link>
-                      ))}
-                  </div>
-                )}
               </CollapsibleContent>
             </Collapsible>
           </div>
         </div>
       </div>
+
       {confirmDialog}
     </div>
   );

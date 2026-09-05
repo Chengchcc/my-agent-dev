@@ -28,7 +28,11 @@ const TOOL_MANIFEST = [
   { name: "history_around", description: "a", inputSchema: {}, entrypoint: "sse:x" },
   { name: "history_retain", description: "t", inputSchema: {}, entrypoint: "sse:x" },
   { name: "todo_write", description: "w", inputSchema: {}, entrypoint: "sse:x" },
+  { name: "ask_question", description: "q", inputSchema: {}, entrypoint: "sse:x" },
 ];
+
+/** Captures emitAsk calls so tests can assert the request surfaced. */
+let emittedAsks: Array<{ runId: string; callId: string }> = [];
 
 async function createRun(messageText: string): Promise<string> {
   const acq = await backend.enqueueAndAcquire({
@@ -94,7 +98,10 @@ beforeEach(async () => {
       download: async () => ({ content: "x", encoding: "utf8", mimeType: "text/plain" }),
     } as never,
     idGen: { ulid: () => `y-${Math.random().toString(36).slice(2, 8)}` },
+    emitAsk: (input) => emittedAsks.push({ runId: input.runId, callId: input.callId }),
+    askTimeoutMs: 2000,
   });
+  emittedAsks = [];
   convPort.createConversation({ conversationId: CONV, agentId: AGENT, createdAt: Date.now() });
   const tree = await contextPort.getOrCreateTree(CONV);
   const branch = await contextPort.getOrCreateDefaultBranch(tree.treeId, "oma");
@@ -492,5 +499,51 @@ describe("product tools service", () => {
         signal: controller.signal,
       }),
     ).rejects.toThrow(/aborted/);
+  });
+
+  test("ask_question blocks until resolveAsk wakes it", async () => {
+    const runId = await createRun("hi");
+    const callId = "ask-1";
+    const answered = service.call({
+      identity: identity(runId),
+      callId,
+      idempotencyKey: `${runId}:${callId}`,
+      tool: "ask_question",
+      args: {
+        questions: [
+          { id: "q1", kind: "select", question: "Pick?", options: [{ value: "a", label: "A" }] },
+        ],
+      },
+    });
+    // The request surfaces (emitted) but the call is still pending.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(emittedAsks).toEqual([{ runId, callId }]);
+    let settled = false;
+    void answered.then(() => {
+      settled = true;
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(settled).toBe(false);
+    // Resolve wakes the parked resolver -> returns the answers.
+    service.resolveAsk(runId, callId, {
+      answers: [{ id: "q1", selectedValues: ["a"] }],
+    });
+    const result = await answered;
+    expect(result).toEqual({
+      content: JSON.stringify({ answers: [{ id: "q1", selectedValues: ["a"] }] }),
+    });
+  });
+
+  test("ask_question times out (null) when unanswered", async () => {
+    const runId = await createRun("hi");
+    const callId = "ask-timeout";
+    const result = await service.call({
+      identity: identity(runId),
+      callId,
+      idempotencyKey: `${runId}:${callId}`,
+      tool: "ask_question",
+      args: { questions: [{ id: "q1", kind: "text", question: "Type?" }] },
+    });
+    expect(result).toEqual({ content: JSON.stringify({ error: "ask timeout" }), isError: true });
   });
 });

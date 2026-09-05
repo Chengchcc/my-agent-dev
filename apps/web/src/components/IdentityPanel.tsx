@@ -104,7 +104,7 @@ export function IdentityPanel({ agentId }: { agentId: string }) {
   const cancel = () => setEditingField(null);
 
   return (
-    <div className="space-y-4 max-w-2xl">
+    <div className="space-y-4">
       <Section
         title="SOUL"
         content={data.soul}

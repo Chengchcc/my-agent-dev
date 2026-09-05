@@ -10,17 +10,29 @@ import { ArtifactMarkdownCard } from "./ArtifactMarkdownCard";
 
 interface MarkdownProps {
   text: string;
+  /** "muted" renders a lighter, tighter, whitespace-preserving set for
+   *  secondary surfaces (e.g. the thinking trace) that must not compete with
+   *  the narrative body for visual weight. */
+  tone?: "default" | "muted";
 }
 
-function buildComponents(): Components {
+function buildComponents(tone: "default" | "muted"): Components {
+  const muted = tone === "muted";
   return {
-    p: ({ children }) => (
-      <p className="whitespace-pre-wrap wrap-break-word text-(--ink) text-sm/relaxed my-2 first:mt-0 last:mb-0">
-        {children}
-      </p>
-    ),
+    p: ({ children }) =>
+      muted ? (
+        <p className="whitespace-pre-wrap wrap-break-word my-1 first:mt-0 last:mb-0 text-sm leading-relaxed text-(--mute)">
+          {children}
+        </p>
+      ) : (
+        <p className="whitespace-pre-wrap wrap-break-word text-(--ink) text-sm/relaxed my-2 first:mt-0 last:mb-0">
+          {children}
+        </p>
+      ),
     strong: ({ children }) => (
-      <strong className="font-semibold text-(--ink-strong)">{children}</strong>
+      <strong className={`font-semibold ${muted ? "text-(--body)" : "text-(--ink-strong)"}`}>
+        {children}
+      </strong>
     ),
     em: ({ children }) => <em className="italic">{children}</em>,
     del: ({ children }) => <del className="text-(--mute) line-through">{children}</del>,
@@ -60,12 +72,24 @@ function buildComponents(): Components {
     ),
 
     ul: ({ children }) => (
-      <ul className="list-disc pl-5 my-2 space-y-1 text-sm text-(--ink) marker:text-(--mute)">
+      <ul
+        className={
+          muted
+            ? "list-disc pl-5 my-1 space-y-0.5 text-sm text-(--mute) marker:text-(--faint)"
+            : "list-disc pl-5 my-2 space-y-1 text-sm text-(--ink) marker:text-(--mute)"
+        }
+      >
         {children}
       </ul>
     ),
     ol: ({ children }) => (
-      <ol className="list-decimal pl-5 my-2 space-y-1 text-sm text-(--ink) marker:text-(--mute)">
+      <ol
+        className={
+          muted
+            ? "list-decimal pl-5 my-1 space-y-0.5 text-sm text-(--mute) marker:text-(--faint)"
+            : "list-decimal pl-5 my-2 space-y-1 text-sm text-(--ink) marker:text-(--mute)"
+        }
+      >
         {children}
       </ol>
     ),
@@ -124,8 +148,8 @@ function buildComponents(): Components {
   };
 }
 
-export const Markdown = memo(function Markdown({ text }: MarkdownProps) {
-  const components = useMemo(buildComponents, []);
+export const Markdown = memo(function Markdown({ text, tone = "default" }: MarkdownProps) {
+  const components = useMemo(() => buildComponents(tone), [tone]);
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkArtifactUrls]}

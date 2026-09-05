@@ -104,7 +104,7 @@ function buildGraph(
   humanForms?: Record<string, AskQuestionInput>,
   upstreamArtifacts?: Array<{ url: string; from: string; content?: string }>,
 ): { nodes: Node[]; edges: Edge[] } {
-  const nodes: Node[] = graph.nodes.map((n) => {
+  const nodes: Node[] = graph.nodes.map((n, idx) => {
     const status = nodeStatus?.[n.id] ?? "idle";
     return {
       id: n.id,
@@ -117,6 +117,7 @@ function buildGraph(
         summary: n.summary,
         meta: n.meta,
         status,
+        seq: idx + 1,
         ...(interactive && onNodeDelete ? { onDelete: () => onNodeDelete(n.id) } : {}),
         ...(n.type === "human"
           ? {
@@ -172,6 +173,7 @@ export function WorkflowCanvas({
   onNodeDelete,
   onEdgeSelect,
   onNodeMenuRequested,
+  onReady,
   pendingHuman,
   onSubmitHuman,
   humanForms,
@@ -188,6 +190,15 @@ export function WorkflowCanvas({
   /** User dragged an edge from a node and dropped on empty canvas → show
    *  the "add downstream node" menu. */
   onNodeMenuRequested?: (sourceId: string, position: { x: number; y: number }) => void;
+  /** Surfaced when React Flow is ready: exposes zoom controls so an external
+   *  DAG stats / zoom toolbar can drive the canvas. */
+  onReady?: (api: {
+    zoomIn: () => void;
+    zoomOut: () => void;
+    fitView: (opts?: { padding?: number }) => void;
+    setZoom: (z: number) => void;
+    getZoom: () => number;
+  }) => void;
   pendingHuman?: {
     nodeId: string;
     question?: string;
@@ -200,6 +211,10 @@ export function WorkflowCanvas({
 }) {
   const [rf, setRf] = useState<{
     fitView: (opts?: { padding?: number }) => void;
+    zoomIn?: () => void;
+    zoomOut?: () => void;
+    setZoom?: (z: number) => void;
+    getZoom?: () => number;
     screenToFlowPosition?: (pos: { x: number; y: number }) => { x: number; y: number };
   } | null>(null);
   const [connectSource, setConnectSource] = useState<string | null>(null);
@@ -357,7 +372,23 @@ export function WorkflowCanvas({
         }
         proOptions={{ hideAttribution: true }}
         deleteKeyCode={interactive ? ["Delete", "Backspace"] : null}
-        onInit={(instance) => setRf(instance as never)}
+        onInit={(instance) => {
+          const rf = instance as unknown as {
+            zoomIn: () => void;
+            zoomOut: () => void;
+            fitView: (o?: { padding?: number }) => void;
+            setZoom: (z: number) => void;
+            getZoom: () => number;
+          };
+          setRf(instance as never);
+          onReady?.({
+            zoomIn: () => rf.zoomIn(),
+            zoomOut: () => rf.zoomOut(),
+            fitView: (opts) => rf.fitView(opts),
+            setZoom: (z) => rf.setZoom(z),
+            getZoom: () => rf.getZoom(),
+          });
+        }}
       >
         <Background variant={BackgroundVariant.Lines} gap={24} size={1} color="var(--wf-grid)" />
         {interactive && minimapOpen && (

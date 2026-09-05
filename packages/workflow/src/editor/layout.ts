@@ -8,9 +8,11 @@ export interface PositionedNode {
   layer: number;
 }
 
-/** Top-bottom layout: layer = row (y grows downward), index-in-layer = column. */
-const LAYER_GAP_Y = 150;
-const NODE_GAP_X = 260;
+/** Left-right layout (Obsidian Live DAG): layer = column (x grows right),
+ *  index-in-layer = row (y). Connectors flow left → right like the design
+ *  (`01 → 02 → 03 → 04`). */
+const LAYER_GAP_X = 300;
+const NODE_GAP_Y = 170;
 
 /** Deterministic layered layout: longest-path layer + per-layer stacking. */
 export function layeredLayout(def: WorkflowDefinition): PositionedNode[] {
@@ -34,7 +36,7 @@ export function layeredLayout(def: WorkflowDefinition): PositionedNode[] {
   return order.map((id) => ({
     id,
     layer: layer.get(id) ?? 0,
-    x: (indexInLayer.get(id) ?? 0) * NODE_GAP_X,
-    y: (layer.get(id) ?? 0) * LAYER_GAP_Y,
+    x: (layer.get(id) ?? 0) * LAYER_GAP_X,
+    y: (indexInLayer.get(id) ?? 0) * NODE_GAP_Y,
   }));
 }

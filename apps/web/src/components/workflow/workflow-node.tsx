@@ -1,9 +1,7 @@
 "use client";
 
-import type { AskQuestionInput } from "@chengchenccc/agent-contract";
 import { Handle, type NodeProps, Position } from "@xyflow/react";
 import { Bot, Code2, Flag, type LucideIcon, Play, UserRound } from "lucide-react";
-import { AskQuestionCard } from "./AskQuestionCard";
 
 const typeIcon: Record<string, LucideIcon> = {
   start: Play,
@@ -21,28 +19,40 @@ const typeColor: Record<string, string> = {
   human: "var(--wf-color-human)",
 };
 
-/** Node execution status → { color, label } for the status pill. */
-const STATUS_STYLE: Record<string, { color: string; label: string }> = {
-  done: { color: "var(--ok)", label: "\u2713 done" },
-  active: { color: "var(--primary)", label: "\u25cf running" },
-  failed: { color: "var(--err)", label: "\u2717 failed" },
+/** Node execution status → high-contrast label pill (Obsidian design:
+ *  `RUNNING`/`PASSED`/`● done`/`⏱ 200 OK` style). */
+const STATUS_STYLE: Record<string, { className: string; label: string }> = {
+  done: {
+    className: "border-(--ok)/30 bg-(--ok)/10 text-(--ok)",
+    label: "✓ done",
+  },
+  active: {
+    className: "border-(--primary)/30 bg-(--primary)/10 text-(--primary)",
+    label: "● running",
+  },
+  failed: {
+    className: "border-(--err)/30 bg-(--err)/10 text-(--err)",
+    label: "✗ failed",
+  },
 };
 
-/** Blueprint node card: dark instrument look with a glowing type band. */
+/** Blueprint node card (Obsidian Live DAG anatomy): numbered title row with a
+ *  high-contrast status pill, icon + label + subtitle, and a footer meta row. */
 export function WorkflowNodeCard({ data, selected }: NodeProps) {
   const t = (data as { type?: string }).type ?? "script";
-  const status = (data as { status?: string }).status;
+  const status = (data as { status?: string }).status as string | undefined;
   const summaryProp = (data as { summary?: string }).summary;
   const metaProp = (data as { meta?: string }).meta;
-  const askRendered = t === "human" && Boolean((data as { askQuestion?: unknown }).askQuestion);
+  const seq = (data as { seq?: number }).seq;
   const onDelete = (data as { onDelete?: () => void }).onDelete;
   const band = typeColor[t] ?? "var(--wf-info)";
+  const pill = status ? STATUS_STYLE[status] : undefined;
+
   return (
     <div
       style={{
-        width: 220,
-        height:
-          t === "human" && (data as { askQuestion?: AskQuestionInput }).askQuestion ? "auto" : 100,
+        width: 240,
+        minHeight: 108,
         borderRadius: 12,
         position: "relative",
         background:
@@ -55,6 +65,7 @@ export function WorkflowNodeCard({ data, selected }: NodeProps) {
         animation: "wf-pop 0.25s ease-out both",
       }}
     >
+      {/* Type band */}
       <div
         style={{
           position: "absolute",
@@ -79,66 +90,61 @@ export function WorkflowNodeCard({ data, selected }: NodeProps) {
           ✕
         </button>
       )}
-      <div className="pl-3.5 pr-3 pt-3">
-        <div className="flex items-center justify-between font-mono text-[9px] font-semibold uppercase tracking-kicker text-(--mute)">
-          <span>{t}</span>
-          {status && STATUS_STYLE[status] && (
-            <span style={{ color: STATUS_STYLE[status].color }}>{STATUS_STYLE[status].label}</span>
+      <div className="pl-3.5 pr-3 pt-2.5">
+        {/* Title row: `01 - TYPE` + status pill */}
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex min-w-0 items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-kicker text-(--mute)">
+            {seq != null && (
+              <span className="shrink-0 text-(--faint)">{String(seq).padStart(2, "0")}</span>
+            )}
+            <span className="truncate">- {t}</span>
+          </span>
+          {pill && (
+            <span
+              className={`shrink-0 rounded border px-1.5 py-0.5 font-label-caps text-label-caps font-bold uppercase ${pill.className}`}
+            >
+              {pill.label}
+            </span>
           )}
         </div>
+        {/* Label + icon */}
         <div className="mt-1.5 flex items-center gap-2">
           {(() => {
             const Icon = typeIcon[t] ?? Bot;
-            return <Icon className="size-4" style={{ color: band }} />;
+            return <Icon className="size-4 shrink-0" style={{ color: band }} />;
           })()}
           <span className="truncate font-display text-sm font-semibold">{String(data.label)}</span>
         </div>
-        {!(askRendered && summaryProp) && (
-          <div className="truncate font-mono text-[11px] text-(--mute)">
-            {summaryProp || `${t} node`}
-          </div>
-        )}
+        {/* Subtitle */}
+        <div className="mt-0.5 truncate font-mono text-[11px] text-(--mute)">
+          {summaryProp || `${t} node`}
+        </div>
       </div>
-      {t === "human" && (data as { askQuestion?: AskQuestionInput }).askQuestion && (
+      {/* Human gate: compact node only. The ask form / approval lives OUTSIDE
+          the node — editor uses the side Properties inspector (HumanFormEditor),
+          execution uses the bottom run console. Never inline in the 240px card. */}
+      {t === "human" && (
         <div className="pointer-events-auto px-3 pb-3">
-          {(() => {
-            const arts = (
-              data as { upstreamArtifacts?: Array<{ url: string; from: string; content?: string }> }
-            ).upstreamArtifacts;
-            if (!arts?.length) return null;
-            return (
-              <details className="mb-2 rounded-md border border-(--hairline) bg-(--canvas)/60 p-2">
-                <summary className="cursor-pointer text-[10px] text-(--mute)">
-                  Upstream outputs ({arts.length}) - expandable before approval
-                </summary>
-                {arts.map((a) => (
-                  <div
-                    key={a.url}
-                    className="mt-1 border-t border-(--hairline) pt-1 first:border-t-0 first:pt-0"
-                  >
-                    <div className="truncate font-mono text-[10px] text-(--info)" title={a.url}>
-                      {a.from} → {a.url}
-                    </div>
-                    {a.content !== undefined && (
-                      <pre className="mt-0.5 max-h-32 overflow-auto text-[10px] text-(--mute)">
-                        {a.content.slice(0, 2000)}
-                      </pre>
-                    )}
-                  </div>
-                ))}
-              </details>
-            );
-          })()}
-          <AskQuestionCard
-            input={(data as { askQuestion: AskQuestionInput }).askQuestion}
-            onSubmit={async (result) => {
-              await (
-                data as { onSubmitHuman?: (answer: Record<string, unknown>) => Promise<void> }
-              ).onSubmitHuman?.({ answers: result.answers } as Record<string, unknown>);
-            }}
-          />
+          <div className="rounded-md border border-(--hairline) bg-(--canvas)/50 px-2.5 py-2">
+            <div className="flex items-center gap-1.5">
+              <UserRound className="size-3.5 shrink-0 text-(--accent-violet)" />
+              <span className="truncate font-mono text-[10px] text-(--mute)">
+                {status === "active"
+                  ? "awaiting answer"
+                  : status === "done"
+                    ? "answered"
+                    : "human gate"}
+              </span>
+            </div>
+            {(data as { summary?: string }).summary && (
+              <p className="mt-1 line-clamp-2 font-mono text-[10px] leading-snug text-(--body)">
+                {(data as { summary: string }).summary}
+              </p>
+            )}
+          </div>
         </div>
       )}
+      {/* Footer meta row */}
       {metaProp && t !== "human" && (
         <div
           className="absolute inset-x-2 bottom-2 flex items-center justify-between rounded bg-(--canvas) px-2 py-1 font-mono text-[9px]"
@@ -148,24 +154,8 @@ export function WorkflowNodeCard({ data, selected }: NodeProps) {
           <span className="shrink-0 text-(--faint)">{t}</span>
         </div>
       )}
-      <span
-        className="pointer-events-none absolute inset-x-0 top-0 z-0 h-full"
-        style={{
-          background: `linear-gradient(180deg, ${band}22, transparent 40%)`,
-          opacity: 0,
-          transition: "opacity 0.2s",
-        }}
-      />
-      <Handle
-        type="target"
-        position={Position.Top}
-        className="h-2.5! w-8! rounded-full! bg-(--faint)! transition-all! hover:bg-(--primary)! hover:shadow-[0_0_8px_var(--primary)]!"
-      />
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        className="h-2.5! w-8! rounded-full! bg-(--faint)! transition-all! hover:bg-(--primary)! hover:shadow-[0_0_8px_var(--primary)]!"
-      />
+      <Handle type="target" position={Position.Left} style={{ background: band }} />
+      <Handle type="source" position={Position.Right} style={{ background: band }} />
     </div>
   );
 }

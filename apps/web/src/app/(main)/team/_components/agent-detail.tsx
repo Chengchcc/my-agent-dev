@@ -69,7 +69,10 @@ export function AgentDetail({ agentId }: { agentId: string }) {
     return (
       <Page>
         <PageHeader
-          breadcrumb={[{ label: "Team", href: "/team" }, { label: "Agents" }]}
+          breadcrumb={[
+            { label: "Team", href: "/team" },
+            { label: "Agents", href: "/team" },
+          ]}
           title="Agent"
         />
         <div className="animate-pulse space-y-3 px-4 sm:px-6 lg:px-8 py-6">
@@ -84,7 +87,10 @@ export function AgentDetail({ agentId }: { agentId: string }) {
     return (
       <Page>
         <PageHeader
-          breadcrumb={[{ label: "Team", href: "/team" }, { label: "Agents" }]}
+          breadcrumb={[
+            { label: "Team", href: "/team" },
+            { label: "Agents", href: "/team" },
+          ]}
           title="Agent"
         />
         <div className="px-4 sm:px-6 lg:px-8 py-6">
@@ -97,7 +103,10 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   return (
     <Page>
       <PageHeader
-        breadcrumb={[{ label: "Team", href: "/team" }, { label: "Agents" }]}
+        breadcrumb={[
+          { label: "Team", href: "/team" },
+          { label: "Agents", href: "/team" },
+        ]}
         title={agent.name}
         action={
           <div className="flex items-center gap-2">
@@ -109,7 +118,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
           </div>
         }
       />
-      <div className="mx-auto max-w-[860px] space-y-6 px-4 sm:px-6 lg:px-8 py-6">
+      <div className="space-y-6 px-4 sm:px-6 lg:px-8 py-6">
         <AgentDescriptionCard agent={agent} />
         <AgentConfigBar agent={agent} />
         <SubTabs items={TABS} active={tab} onChange={(k) => setTab(k as Tab)} />

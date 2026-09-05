@@ -1,12 +1,15 @@
 "use client";
 
+import { KeyRound, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { MonoLabel, StatusPill } from "@/components/patterns";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useClearProvider, useProviders, useSetProvider } from "@/features/providers/hooks";
 
+/** Provider key management in the Observatory card language: a list of provider
+ *  rows with a configured status pill and an inline Set/Update form. */
 export function ProviderSettingsSection() {
   const { data, isLoading } = useProviders();
   const setProvider = useSetProvider();
@@ -16,6 +19,7 @@ export function ProviderSettingsSection() {
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const current = providers.find((p) => p.id === selected);
+  const configuredCount = providers.filter((p) => p.configured).length;
 
   async function save() {
     if (!selected) return;
@@ -28,43 +32,37 @@ export function ProviderSettingsSection() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Provider Keys</CardTitle>
-        <CardDescription>
-          Store API keys in-product so agents can run without deployment env vars.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <section className="rounded-lg border border-(--hairline) bg-(--panel) shadow-sm">
+      <div className="flex items-center justify-between border-b border-(--hairline) px-4 py-3">
+        <div className="flex items-center gap-2">
+          <KeyRound className="size-4 text-(--primary)" />
+          <MonoLabel>Provider keys</MonoLabel>
+        </div>
+        <StatusPill tone={configuredCount > 0 ? "success" : "idle"}>
+          {configuredCount}/{providers.length} configured
+        </StatusPill>
+      </div>
+      <div className="p-4">
         {isLoading ? (
           <p className="text-xs text-(--mute)">Loading providers…</p>
         ) : providers.length === 0 ? (
           <p className="text-xs text-(--mute)">No known providers.</p>
         ) : (
-          <div className="space-y-3">
+          <div className="divide-y divide-(--hairline)">
             {providers.map((p) => (
-              <div
-                key={p.id}
-                className="flex items-center justify-between rounded-md border border-(--hairline) px-3 py-2"
-              >
+              <div key={p.id} className="flex items-center justify-between gap-3 py-2.5">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-(--ink-strong)">{p.name}</span>
-                    <span
-                      className={`text-[10px] px-1.5 py-0.5 rounded ${
-                        p.configured
-                          ? "bg-(--primary)/10 text-(--primary)"
-                          : "bg-(--mute)/10 text-(--mute)"
-                      }`}
-                    >
+                    <StatusPill tone={p.configured ? "success" : "idle"}>
                       {p.configured ? "configured" : "not configured"}
-                    </span>
+                    </StatusPill>
                   </div>
-                  <p className="text-[11px] text-(--mute)">{p.apiKeyEnv}</p>
+                  <p className="mt-0.5 font-mono text-[10px] text-(--mute)">{p.apiKeyEnv}</p>
                 </div>
                 <Button
                   size="sm"
-                  variant="ghost"
+                  variant="outline"
                   onClick={() => {
                     setSelected(p.id);
                     setApiKey("");
@@ -79,7 +77,7 @@ export function ProviderSettingsSection() {
         )}
 
         {selected && current && (
-          <div className="space-y-2 rounded-md border border-(--hairline) p-3">
+          <div className="mt-4 space-y-2 rounded-md border border-(--hairline) bg-(--canvas-soft) p-3">
             <div>
               <Label className="text-[10px] uppercase tracking-kicker text-(--mute)">
                 {current.name} API key
@@ -90,6 +88,7 @@ export function ProviderSettingsSection() {
                 placeholder={`${current.apiKeyEnv} value`}
                 type="password"
                 autoComplete="off"
+                className="mt-1"
               />
             </div>
             {current.apiKeyEnv === "ANTHROPIC_API_KEY" && (
@@ -102,10 +101,11 @@ export function ProviderSettingsSection() {
                   onChange={(e) => setBaseUrl(e.target.value)}
                   placeholder="Optional proxy base URL"
                   autoComplete="off"
+                  className="mt-1"
                 />
               </div>
             )}
-            <div className="flex gap-2">
+            <div className="flex gap-2 pt-1">
               <Button size="sm" onClick={save} disabled={setProvider.isPending}>
                 Save
               </Button>
@@ -116,18 +116,20 @@ export function ProviderSettingsSection() {
                 <Button
                   size="sm"
                   variant="ghost"
+                  className="text-(--err)"
                   onClick={() => {
                     void clearProvider.mutateAsync(current.id);
                     setSelected("");
                   }}
                 >
+                  <Trash2 className="size-3" />
                   Clear
                 </Button>
               )}
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }

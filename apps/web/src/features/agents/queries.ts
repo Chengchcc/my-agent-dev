@@ -2,6 +2,12 @@ import { queryOptions } from "@tanstack/react-query";
 import { type AgentMemory, api } from "@/lib/api";
 import { agentKeys } from "./query-keys";
 
+export type WorkspaceEntry = {
+  name: string;
+  kind: "dir" | "file" | "symlink";
+  size: number | null;
+};
+
 export function agentListQuery(filters?: Record<string, unknown>) {
   return queryOptions({
     queryKey: agentKeys.list(filters),
@@ -27,5 +33,13 @@ export function agentMemoryQuery(id: string) {
   return queryOptions({
     queryKey: agentKeys.memory(id),
     queryFn: () => api.getAgentMemory(id) as Promise<AgentMemory>,
+  });
+}
+
+export function agentWorkspaceEntriesQuery(id: string, path: string) {
+  return queryOptions({
+    queryKey: agentKeys.workspace(id, path),
+    queryFn: () =>
+      api.listWorkspaceEntries(id, path) as Promise<{ path: string; entries: WorkspaceEntry[] }>,
   });
 }

@@ -131,20 +131,22 @@ function PackDrawer({
     >
       {tab === "overview" && (
         <div className="space-y-4">
-          <Text as="p" className="text-sm text-(--mute)">
-            {pack.description || "No description."}
-          </Text>
-          <div className="flex flex-wrap gap-1">
-            <span className="rounded bg-(--panel2) px-1.5 py-0.5 text-xs text-(--mute)">
-              {pack.sourceKind}
-            </span>
-            {pack.keepSynced === true && (
-              <span className="rounded bg-(--ok)/12 px-1.5 py-0.5 text-xs text-(--ok)">
-                auto-sync
+          <div>
+            <Text as="p" className="text-sm text-(--mute)">
+              {pack.description || "No description."}
+            </Text>
+            <div className="mt-2 flex flex-wrap gap-1">
+              <span className="rounded bg-(--panel2) px-1.5 py-0.5 font-mono text-[10px] text-(--mute)">
+                {pack.sourceKind}
               </span>
-            )}
+              {pack.keepSynced === true && (
+                <span className="rounded bg-(--ok)/12 px-1.5 py-0.5 font-mono text-[10px] text-(--ok)">
+                  auto-sync
+                </span>
+              )}
+            </div>
           </div>
-          <dl className="space-y-1 text-sm">
+          <dl className="divide-y divide-(--hairline) rounded-md border border-(--hairline) bg-(--canvas-soft) px-3 py-1">
             <DetailRow label="Type" value={pack.sourceKind === "git" ? "Git" : pack.sourceKind} />
             <DetailRow label="Source" value={pack.sourceUrl ?? pack.installedRef ?? "—"} />
             <DetailRow label="Status" value={badge.label} />
@@ -239,13 +241,11 @@ function PackDrawer({
 
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between gap-4">
-      <Text as="dt" className="text-(--mute)">
+    <div className="grid grid-cols-[160px_1fr] items-baseline gap-4 py-1.5">
+      <dt className="font-label-caps text-label-caps uppercase tracking-wider text-(--faint)">
         {label}
-      </Text>
-      <Text as="dd" className="truncate text-right">
-        {value}
-      </Text>
+      </dt>
+      <dd className="truncate text-right font-mono text-xs text-(--body) tabular-nums">{value}</dd>
     </div>
   );
 }
@@ -388,6 +388,7 @@ export default function SkillPacksPage() {
       <PageHeader
         breadcrumb="Team / Capabilities / Skills"
         title="Skills"
+        description="Managed skills and capability bundles per agent."
         pill={
           list.length > 0 ? (
             <StatusPill tone="success">
@@ -419,9 +420,6 @@ export default function SkillPacksPage() {
           </>
         }
       />
-      <p className="px-2 text-xs text-(--mute) md:px-0">
-        Managed skills and capability bundles per agent.
-      </p>
       <PageBody>
         <div className="space-y-6">
           <InfoBanner

@@ -41,6 +41,7 @@ const DslEditorPanel = dynamic(() => import("./DslEditorPanel").then((m) => m.Ds
   onChange: (next: WorkflowDefinition) => void;
 }>;
 
+import { DagStatsBar } from "./DagStatsBar";
 import { EdgePropertyPanel } from "./EdgePropertyPanel";
 import { NodeMenuPopover } from "./NodeMenuPopover";
 import { NodePanel } from "./NodePanel";
@@ -427,26 +428,38 @@ export function AgenticWorkflowEditor({
                   </div>
                 )}
                 {graph && definition ? (
-                  <WorkflowCanvas
-                    graph={graph}
-                    interactive
-                    onSelect={(id) => {
-                      setActiveId(id);
-                      setActiveEdgeIndex(null);
-                      setInspectorTab("attrs");
-                    }}
-                    onConnect={(from, to) => setDefinitionTracked(addEdge(definition, from, to))}
-                    onNodeDelete={(id) => setDefinitionTracked(deleteNode(definition, id))}
-                    onEdgeSelect={(i) => {
-                      setActiveEdgeIndex(i);
-                      setActiveId(null);
-                      setInspectorTab("attrs");
-                    }}
-                    onNodeMenuRequested={(sourceId, pos) =>
-                      setMenu({ sourceId, x: pos.x, y: pos.y })
-                    }
-                    humanForms={humanForms}
-                  />
+                  <div className="flex h-full flex-col">
+                    <DagStatsBar
+                      nodeCount={graph.nodes.length}
+                      depth={graph.nodes.reduce((m, n) => Math.max(m, n.layer), 0) + 1}
+                      validated={!!validation?.ok}
+                      streaming={false}
+                    />
+                    <div className="min-h-0 flex-1">
+                      <WorkflowCanvas
+                        graph={graph}
+                        interactive
+                        onSelect={(id) => {
+                          setActiveId(id);
+                          setActiveEdgeIndex(null);
+                          setInspectorTab("attrs");
+                        }}
+                        onConnect={(from, to) =>
+                          setDefinitionTracked(addEdge(definition, from, to))
+                        }
+                        onNodeDelete={(id) => setDefinitionTracked(deleteNode(definition, id))}
+                        onEdgeSelect={(i) => {
+                          setActiveEdgeIndex(i);
+                          setActiveId(null);
+                          setInspectorTab("attrs");
+                        }}
+                        onNodeMenuRequested={(sourceId, pos) =>
+                          setMenu({ sourceId, x: pos.x, y: pos.y })
+                        }
+                        humanForms={humanForms}
+                      />
+                    </div>
+                  </div>
                 ) : (
                   <div className="flex h-full items-center justify-center text-sm text-(--mute)">
                     No workflow loaded.
@@ -454,8 +467,7 @@ export function AgenticWorkflowEditor({
                 )}
               </div>
             </div>
-
-            {/* Resize handle between canvas and inspector */}
+            …{/* Resize handle between canvas and inspector */}
             <div
               onPointerDown={(e) => {
                 e.preventDefault();
@@ -539,7 +551,6 @@ export function AgenticWorkflowEditor({
                 )}
               </div>
             </div>
-
             {/* Resize handle between inspector and chat */}
             {definition && (
               <div

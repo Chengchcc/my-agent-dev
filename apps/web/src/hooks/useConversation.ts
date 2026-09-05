@@ -27,6 +27,7 @@ import {
   removeTransient,
   setRunTodos as setRunTodosMap,
   setTransientApproval,
+  setTransientAsk,
   type TodoItem,
   type TransientMap,
   upsertTool,
@@ -444,6 +445,26 @@ export function useConversation(
                 callId: p.callId as string,
                 toolName: typeof p.toolName === "string" ? p.toolName : "tool",
                 reason: typeof p.reason === "string" ? p.reason : "",
+              });
+              transientsRef.current = next;
+              return next;
+            });
+          }
+        } catch {
+          /* malformed - ignore */
+        }
+      });
+      es.addEventListener("backend.oma.ask_requested", (e) => {
+        try {
+          const ev = JSON.parse((e as MessageEvent).data) as {
+            payload?: { callId?: string; questions?: unknown[] };
+          };
+          const p = ev.payload;
+          if (typeof p?.callId === "string") {
+            setTransients((prev) => {
+              const next = setTransientAsk(prev, runId, agentId, {
+                callId: p.callId as string,
+                questions: Array.isArray(p.questions) ? p.questions : [],
               });
               transientsRef.current = next;
               return next;

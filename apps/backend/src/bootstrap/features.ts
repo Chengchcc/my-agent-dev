@@ -5,6 +5,7 @@ import { OmaBackend, OmaModelCatalog } from "@chengchenccc/adapter-oma-agent";
 import { OmpBackend, OmpModelCatalog } from "@chengchenccc/adapter-omp-agent";
 import { PiBackend, PiModelCatalog } from "@chengchenccc/adapter-pi-agent";
 import type {
+  AskQuestionInput,
   BackendKind,
   BackendRegistry,
   BackendRegistryEntry,
@@ -350,6 +351,13 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   // Product Tools (History) - assembled unconditionally so the MCP endpoint
   // and the execution manifest are consistent; the MCP server only listens
   // when a URL is configured.
+  // ask_question routes a run-scoped ask_requested event onto the run's live
+  // SSE stream (backend.oma.* extension event) so the web can surface the
+  // AskQuestionCard. agentRunExecution is created later, so resolve lazily via
+  // a mutable holder assigned after it exists.
+  let broadcastAskEvent:
+    | ((input: { runId: string; callId: string; question: AskQuestionInput }) => void)
+    | null = null;
   const productTools = createProductToolsService({
     runPort: agentRunPort,
     contextPort,
@@ -357,6 +365,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     callPort: sqliteProductToolCallAdapter(db),
     idGen: { ulid },
     artifactService,
+    emitAsk: (input) => broadcastAskEvent?.(input),
   });
   let productToolsMcp: Awaited<ReturnType<typeof createProductToolsMcpServer>> | null = null;
   const enabledMcpServers = new Set(
@@ -538,6 +547,13 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       mcpRuntimeStatus.record({ ...result, at: Date.now() });
     },
   });
+  // Late-bound: ask_question routes onto the run's live SSE stream.
+  broadcastAskEvent = ({ runId, callId, question }) => {
+    agentRunExecution.broadcastRunEvent(runId, {
+      type: "backend.oma.ask_requested",
+      payload: { callId, questions: question.questions },
+    });
+  };
 
   dispatchRun.fn = (runId: string) => agentRunExecution.dispatch(runId);
   injectSteer.fn = (branchId: string, input: { inputId: string; message: Message }) =>
@@ -967,6 +983,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     knowledge: knowledgeRoutes(knowledgeSvc),
     workflowExecutions: workflowApp,
     artifacts: artifactRoutes(artifactService),
+    productTools,
     settings: settingsRoutes(settingsSvc),
 
     providers: providerRoutes(providerSvc, { onChange: refreshOmaProviderEnv }),

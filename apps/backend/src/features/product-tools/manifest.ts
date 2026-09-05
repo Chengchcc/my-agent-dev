@@ -117,5 +117,21 @@ export function buildHistoryTools(entrypoint: string): readonly ProductToolDescr
       },
       entrypoint,
     },
+    {
+      name: "ask_question",
+      description:
+        "Ask the user structured questions and wait for answers. Questions are select (options) or text (free input). Returns {answers:[{id,selectedValues,freeText}]}. Blocks until the user answers in the product UI.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          questions: {
+            type: "array",
+            items: { type: "object" },
+          },
+        },
+        required: ["questions"],
+      },
+      entrypoint,
+    },
   ];
 }

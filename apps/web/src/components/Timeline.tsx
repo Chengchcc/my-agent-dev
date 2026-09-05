@@ -1,4 +1,5 @@
 "use client";
+import type { AskQuestionInput, AskQuestionResult } from "@chengchenccc/agent-contract";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { ArtifactMeta } from "@/lib/api";
@@ -19,6 +20,7 @@ import { ReasoningTrace } from "./ReasoningTrace";
 import { TimelineApprovalCard } from "./TimelineApprovalCard";
 import { TimelineMessageActions } from "./TimelineMessageActions";
 import { TimelineTransientTrace } from "./TimelineTransientTrace";
+import { AskQuestionCard } from "./workflow/AskQuestionCard";
 
 interface TimelineProps {
   messages: UiItem[];
@@ -36,6 +38,7 @@ interface TimelineProps {
         error?: string;
         notices?: string[];
         approval?: { callId: string; toolName: string; reason: string };
+        ask?: { callId: string; questions: unknown[] };
         /** Interleaved thinking/text deltas in arrival order. When present,
          *  the trace renders them interleaved instead of lumping all thinking
          *  on top of the text. */
@@ -43,6 +46,7 @@ interface TimelineProps {
       }>
     | undefined;
   onResolveApproval?: (runId: string, callId: string, decision: "allow" | "deny") => void;
+  onResolveAsk?: (runId: string, callId: string, answer: unknown) => void;
   /** Artifacts keyed by producing run id, rendered under the matching agent message. */
   artifactsByRunId?: ReadonlyMap<string, ArtifactMeta[]>;
   onPreviewArtifact?: (artifact: ArtifactMeta) => void;
@@ -69,6 +73,37 @@ function runIdOf(m: MessageItem): string | null {
   const mid = m.content.id;
   const match = /^run:([^:]+):/.exec(mid ?? "");
   return match ? match[1]! : null;
+}
+
+/** Sender grouping (IM style): consecutive messages from the same member form
+ *  one cluster — only the first shows the sender marker, the last shows the
+ *  timestamp. `msgIndex` is the index within `messages` (UiItem[]); notices
+ *  are skipped — we find the nearest content message each side. */
+function senderGroupBounds(
+  messages: UiItem[],
+  msgIndex: number,
+): { showSender: boolean; isFirst: boolean; isLast: boolean } {
+  const item = messages[msgIndex]!;
+  if (item.kind !== "message") return { showSender: false, isFirst: false, isLast: false };
+  const key = (m: MessageItem) => `${m.sender.kind}:${m.sender.memberId}`;
+  const same = (a: MessageItem, b: MessageItem) => key(a) === key(b);
+  let prevSame = false;
+  for (let i = msgIndex - 1; i >= 0; i--) {
+    const prev = messages[i]!;
+    if (prev.kind !== "message") continue;
+    prevSame = same(prev, item);
+    break;
+  }
+  let nextSame = false;
+  for (let i = msgIndex + 1; i < messages.length; i++) {
+    const next = messages[i]!;
+    if (next.kind !== "message") continue;
+    nextSame = same(next, item);
+    break;
+  }
+  const isFirst = !prevSame;
+  const isLast = !nextSame;
+  return { showSender: isFirst, isFirst, isLast };
 }
 
 // ── Segment helpers ──
@@ -103,6 +138,7 @@ export function Timeline({
   scrollContainerRef,
   transients,
   onResolveApproval,
+  onResolveAsk,
   artifactsByRunId,
   onPreviewArtifact,
   onDownloadArtifact,
@@ -216,13 +252,24 @@ export function Timeline({
 
       {/* Timeline content */}
       <div className="flex-1 min-w-0">
-        <div className="max-w-3xl mx-auto">
+        <div className="mx-auto max-w-[min(48rem,100%)] w-full">
           {renderItems.map(({ seg, anchorId }, ri) => {
             if (seg.kind === "turn") {
               // Agent turn blocks never start a turn, so they carry no anchor.
+              const first = seg.rounds[0] ?? seg.conclusion;
+              const last = seg.conclusion ?? seg.rounds[seg.rounds.length - 1];
+              const firstIdx = first ? messages.indexOf(first) : -1;
+              const lastIdx = last ? messages.indexOf(last) : -1;
               return (
                 <div key={seg.id}>
-                  <ReasoningTrace segment={seg} defaultOpen={false} />
+                  <ReasoningTrace
+                    segment={seg}
+                    defaultOpen={false}
+                    showSender={
+                      firstIdx >= 0 ? senderGroupBounds(messages, firstIdx).showSender : false
+                    }
+                    isLast={lastIdx >= 0 ? senderGroupBounds(messages, lastIdx).isLast : false}
+                  />
                 </div>
               );
             }
@@ -238,6 +285,8 @@ export function Timeline({
             const m = seg.item;
             const isSelf = m.sender.kind === "human";
             const isUndone = m.undone === true;
+            const msgIndex = messages.indexOf(m);
+            const bounds = senderGroupBounds(messages, msgIndex);
             const virt = {
               contentVisibility: "auto" as const,
               containIntrinsicSize: "auto 80px" as const,
@@ -281,11 +330,15 @@ export function Timeline({
                         name={isSelf ? undefined : (m.sender.displayName ?? m.sender.memberId)}
                         kind={m.sender.kind}
                         agentId={m.sender.agentId}
+                        createdAt={m.content.createdAt}
                         content={extractText(m.content)}
                         isStreaming={m.content.state === "streaming"}
                         runStatus={m.content.runStatus}
                         state={m.content.state}
                         error={m.content.error?.message}
+                        showSender={bounds.showSender}
+                        isFirst={bounds.isFirst}
+                        isLast={bounds.isLast}
                       />
                     )}
                     {renderContentBlocks(m.content, {
@@ -337,6 +390,16 @@ export function Timeline({
                     approval={t.approval}
                     onResolveApproval={onResolveApproval}
                   />
+                )}
+                {t.ask && (
+                  <div className="px-1 py-1">
+                    <AskQuestionCard
+                      input={{ questions: t.ask.questions as AskQuestionInput["questions"] }}
+                      onSubmit={(result: AskQuestionResult) =>
+                        onResolveAsk?.(t.runId, t.ask!.callId, result)
+                      }
+                    />
+                  </div>
                 )}
                 {tools.length > 0 && (
                   <TimelineTransientTrace

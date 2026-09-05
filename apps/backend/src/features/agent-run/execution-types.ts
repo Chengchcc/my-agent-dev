@@ -106,4 +106,6 @@ export interface AgentRunExecutionService {
    *  pipeline Phase B). Explicit failure when no live child exists. */
   resolveApproval(runId: string, callId: string, decision: "allow" | "deny"): Promise<void>;
   subscribe(runId: string, signal?: AbortSignal): AsyncIterable<BackendEvent>;
+  /** Push a run-scoped event to the live SSE stream (web observes it). */
+  broadcastRunEvent(runId: string, event: BackendEvent): void;
 }

@@ -55,7 +55,8 @@ export function StatusPill({
   );
 }
 
-/** Compact metric tile: micro-label, oversized tabular value, detail, bar. */
+/** Compact metric tile (Obsidian design): mono micro-label, oversized tabular
+ *  value, detail line, and an optional progress strip. */
 export function KpiTile({
   label,
   value,
@@ -82,19 +83,18 @@ export function KpiTile({
   };
   return (
     <div
-      className={cn(
-        "relative flex flex-col gap-1 rounded-lg border border-(--hairline) bg-(--panel) p-3",
-        className,
-      )}
+      className={cn("rounded-lg border border-(--hairline) bg-(--panel) p-3 shadow-sm", className)}
     >
-      {Icon && <Icon className="absolute top-3 right-3 size-4 text-(--faint)" />}
-      <MonoLabel>{label}</MonoLabel>
-      <span className="font-display text-[34px]/10  font-semibold tracking-tight text-(--ink-strong) tabular-nums">
+      <div className="flex items-center justify-between gap-2">
+        <MonoLabel>{label}</MonoLabel>
+        {Icon && <Icon className="size-4 shrink-0 text-(--primary)" />}
+      </div>
+      <span className="mt-1.5 block font-display text-2xl font-semibold tracking-tight text-(--ink-strong) tabular-nums">
         {value}
       </span>
-      {detail && <span className="text-xs text-(--mute)">{detail}</span>}
+      {detail && <span className="mt-0.5 block font-mono text-[10px] text-(--mute)">{detail}</span>}
       {typeof bar === "number" && (
-        <div className="mt-1 h-1 overflow-hidden rounded-full bg-(--panel2)">
+        <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-(--panel2)">
           <div
             className={cn("h-full rounded-full", BAR_COLOR[barTone])}
             style={{ width: `${Math.min(100, Math.max(0, bar))}%` }}

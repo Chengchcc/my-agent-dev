@@ -28,7 +28,9 @@ describe("layeredLayout", () => {
     expect(byId.get("b")!.layer).toBe(1);
     expect(byId.get("join")!.layer).toBe(2);
     expect(byId.get("done")!.layer).toBe(3);
-    expect(byId.get("b")!.x).toBeGreaterThan(byId.get("a")!.x); // same row, columns advance right
-    expect(byId.get("done")!.y).toBeGreaterThan(byId.get("join")!.y); // deeper layer, row moves down
+    // Horizontal DAG: deeper layer → column advances right (x), siblings
+    // within a layer stack vertically (y).
+    expect(byId.get("done")!.x).toBeGreaterThan(byId.get("join")!.x);
+    expect(byId.get("b")!.y).toBeGreaterThan(byId.get("a")!.y);
   });
 });

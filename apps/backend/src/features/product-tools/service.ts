@@ -1,3 +1,4 @@
+import type { AskQuestionInput, AskQuestionResult } from "@chengchenccc/agent-contract";
 import type { Message } from "@chengchenccc/message";
 import type { AgentContextPort, IdGenerator } from "../agent-context/ports.js";
 import { type AgentRun, isActiveStatus } from "../agent-run/domain.js";
@@ -80,16 +81,25 @@ export interface ProductToolsServiceDeps {
   readonly callPort: ProductToolCallPort;
   readonly idGen: IdGenerator;
   readonly artifactService: ArtifactService;
+  /** Emit an ask to the product UI (SSE) when ask_question is raised. */
+  readonly emitAsk?: (input: { runId: string; callId: string; question: AskQuestionInput }) => void;
+  /** Ask block deadline before it resolves null (model degrades). Default 60s. */
+  readonly askTimeoutMs?: number;
 }
 
 export interface ProductToolsService {
   call(input: ProductToolCallInput): Promise<ProductToolCallResult>;
+  /** Resolve a pending ask (web submitted answers). Idempotent no-op if none. */
+  resolveAsk(runId: string, callId: string, answer: AskQuestionResult): void;
 }
 
 /** Canonical History operations. The conversation scope is ALWAYS derived
  *  from the run, never trusted from MCP arguments. */
 export function createProductToolsService(deps: ProductToolsServiceDeps): ProductToolsService {
   const { runPort, contextPort, conversationPort, callPort } = deps;
+  const askTimeoutMs = deps.askTimeoutMs ?? 60_000;
+  // keyed `${runId}:${callId}` — mirrors oma approval's pendingApprovalsByRun.
+  const pendingAsks = new Map<string, (answer: AskQuestionResult | null) => void>();
 
   function assertScope(run: AgentRun, identity: ProductToolCallIdentity): void {
     if (
@@ -331,6 +341,46 @@ export function createProductToolsService(deps: ProductToolsServiceDeps): Produc
     return { content: result };
   }
 
+  /** ask_question: validate, park a resolver, emit to the UI, and await the
+   *  web's answer (or a timeout). Mirrors oma approval's await-until-resolved. */
+  async function askQuestion(
+    run: AgentRun,
+    input: ProductToolCallInput,
+  ): Promise<ProductToolCallResult> {
+    const questions = input.args.questions;
+    if (!Array.isArray(questions) || questions.length === 0) {
+      throw new ProductToolRejectedError(
+        "ask_question requires questions: non-empty array of {id, question, kind}",
+      );
+    }
+    const parsed: AskQuestionInput = { questions: questions as AskQuestionInput["questions"] };
+    const key = `${run.runId}:${input.callId}`;
+    if (pendingAsks.has(key)) {
+      throw new ProductToolRejectedError(`open ask already pending for call ${input.callId}`);
+    }
+    // Park the resolver; emit + await until resolveAsk (web) or timeout (null).
+    const { promise, resolve } = Promise.withResolvers<AskQuestionResult | null>();
+    pendingAsks.set(key, resolve);
+    deps.emitAsk?.({ runId: run.runId, callId: input.callId, question: parsed });
+    let answer: AskQuestionResult | null;
+    try {
+      answer = await Promise.race([
+        promise,
+        new Promise<null>(
+          (r) =>
+            setTimeout(() => r(null), askTimeoutMs).unref?.() ??
+            setTimeout(() => r(null), askTimeoutMs),
+        ),
+      ]);
+    } finally {
+      pendingAsks.delete(key);
+    }
+    if (!answer) {
+      return { content: JSON.stringify({ error: "ask timeout" }), isError: true };
+    }
+    return { content: JSON.stringify(answer) };
+  }
+
   return {
     async call(input) {
       if (input.signal?.aborted) {
@@ -370,6 +420,8 @@ export function createProductToolsService(deps: ProductToolsServiceDeps): Produc
           return historyRetain(run, input);
         case "todo_write":
           return todoWrite(run, input);
+        case "ask_question":
+          return askQuestion(run, input);
         case "artifact_upload":
           return artifactUpload(run, input);
         case "artifact_download":
@@ -377,6 +429,10 @@ export function createProductToolsService(deps: ProductToolsServiceDeps): Produc
         default:
           throw new ProductToolRejectedError(`tool ${input.tool} is not supported`);
       }
+    },
+    resolveAsk(runId, callId, answer) {
+      const resolve = pendingAsks.get(`${runId}:${callId}`);
+      if (resolve) resolve(answer);
     },
   };
 }

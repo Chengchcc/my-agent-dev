@@ -127,6 +127,18 @@ treat as gap-finders, verify claimed gaps against the DOM before acting).
   a timed search probe; cut from P2 as non-essential.
 - **Budget ceiling.** Client computes pace from the 24h cost curve; a formal
   ceiling needs a settings key + alert field in telemetry summary.
+- **`ask_question` (HITL 提问) as a Product Tools MCP tool — ADR 0027.** The
+  native `ask_question` tool (apps/oh-my-agent/src/core/tools/ask-question.ts)
+  executes through `options.ask`, wired only in **TUI mode**; the oma child in
+  `--mode rpc` has no ask transport, so it fail-closes
+  (`{"error":"no ask pipeline configured"}`, observed on conv `78fa86d5...`).
+  A RPC-native fix would only cover `oma` — `claude`/`pi`/`omp` are separate
+  CLIs via their own adapters and never see the oma JSONL protocol. So the
+  correct cross-runtime path is **MCP injection**: implement `ask_question` in
+  the backend Product Tools MCP (all four runtimes mount it via the shared
+  `adapter-mcp.callTool`), block on an in-memory parked resolver, emit SSE, and
+  let the web answer via a reused `AskQuestionCard`. Design + layer plan in
+  docs/adr/0027-ask-question-product-tools-mcp.md (status Draft).
 
 **Dev convenience:** `apps/backend/scripts/seed-demo.ts` seeds the dev DB with
 dense demo data (48 runs/24h, workflow gates incl. pending-human rows, artifact

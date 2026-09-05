@@ -553,6 +553,23 @@ export const api = {
     executionId: string,
     body: { nodeId: string; answer?: Record<string, unknown> },
   ) => unwrap(client.api["workflow-executions"]({ executionId })["human-task"].post(body)),
+  resolveProductAsk: (body: {
+    runId: string;
+    callId: string;
+    answer: {
+      answers: Array<{
+        id: string;
+        selectedValues: string[];
+        freeText?: string;
+      }>;
+    };
+  }) =>
+    fetch("/api/bff/api/product-tools/ask/resolve", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then((r) => r.json()),
   listArtifacts: async (folder?: string) => {
     const qs = folder ? `?folder=${encodeURIComponent(folder)}` : "";
     const r = await fetch(`/api/bff/api/artifacts${qs}`);

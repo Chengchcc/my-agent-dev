@@ -24,6 +24,12 @@ export interface TransientRun {
     toolName: string;
     reason: string;
   };
+  /** Pending ask_question (ADR 0027, HITL ask pipeline). The web AskQuestionCard
+   *  renders from this; resolving or run end clears it. */
+  ask?: {
+    callId: string;
+    questions: unknown[];
+  };
   /** Terminal failure of this run (status event error field). Kept live
    *  because failed runs persist no assistant message. */
   error?: string;
@@ -138,6 +144,35 @@ export function clearTransientApproval(state: TransientMap, runId: string): Tran
   if (!entry?.approval) return state;
   const next = { ...state };
   const { approval: _drop, ...rest } = entry;
+  next[runId] = rest;
+  return next;
+}
+
+/** Set (or replace) the pending ask_question on runId. */
+export function setTransientAsk(
+  state: TransientMap,
+  runId: string,
+  agentId: string,
+  ask: { callId: string; questions: unknown[] },
+): TransientMap {
+  const next = { ...state };
+  next[runId] = {
+    text: state[runId]?.text ?? "",
+    thinking: state[runId]?.thinking ?? "",
+    ordered: state[runId]?.ordered ?? [],
+    agentId,
+    ...(state[runId]?.notices ? { notices: state[runId].notices } : {}),
+    ask,
+  };
+  return next;
+}
+
+/** Clear the pending ask (answered or run ended). */
+export function clearTransientAsk(state: TransientMap, runId: string): TransientMap {
+  const entry = state[runId];
+  if (!entry?.ask) return state;
+  const next = { ...state };
+  const { ask: _drop, ...rest } = entry;
   next[runId] = rest;
   return next;
 }

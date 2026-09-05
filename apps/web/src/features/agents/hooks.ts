@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { agentDetailQuery, agentIdentityQuery, agentListQuery, agentMemoryQuery } from "./queries";
+import {
+  agentDetailQuery,
+  agentIdentityQuery,
+  agentListQuery,
+  agentMemoryQuery,
+  agentWorkspaceEntriesQuery,
+} from "./queries";
 
 export function useAgentList(opts?: { enabled?: boolean }) {
   return useQuery({ ...agentListQuery(), ...opts });
@@ -16,6 +22,10 @@ export function useAgentIdentity(id: string) {
 
 export function useAgentMemory(id: string) {
   return useQuery(agentMemoryQuery(id));
+}
+
+export function useAgentWorkspaceEntries(id: string, path: string) {
+  return useQuery({ ...agentWorkspaceEntriesQuery(id, path), enabled: !!id });
 }
 
 export { useArchiveAgent, useCreateAgent, useSetIdentity, useUpdateAgent } from "./mutations";

@@ -29,7 +29,7 @@ bun run dev
 
 其它脚本:`bun run build`(next build)、`bun run start`(next start)、`bun run test`(bun test)、`bun run typecheck`。
 
-运行需要两个环境变量供 BFF 连接后端:`BACKEND_URL`(后端基址,如 `http://127.0.0.1:3000`)和 `BACKEND_TOKEN`(BFF 注入的后端鉴权 token,需与后端的 `BACKEND_AUTH_TOKEN` 一致);二者缺失时代理会直接报错。登录所用的口令与用户可由 `MOCK_PASSWORD`、`MOCK_USER_ID` 配置(默认 `admin` / `user-001`)。
+运行需要两个环境变量供 BFF 连接后端:`BACKEND_URL`(后端基址,如 `http://127.0.0.1:3000`)和 `BACKEND_AUTH_TOKEN`(BFF 注入的后端鉴权 token,需与后端的 `BACKEND_AUTH_TOKEN` 一致);二者缺失时代理会直接报错。登录所用的口令与用户可由 `MOCK_PASSWORD`、`MOCK_USER_ID` 配置(默认 `admin` / `user-001`)。
 
 ## 数据取数边界
 

@@ -226,5 +226,9 @@ export function createExecutionService(ctx: ExecutionServiceCtx): AgentRunExecut
     subscribe(runId, signal) {
       return liveEvents.subscribe(runId, signal);
     },
+
+    broadcastRunEvent(runId, event) {
+      liveEvents.broadcast(runId, event);
+    },
   };
 }

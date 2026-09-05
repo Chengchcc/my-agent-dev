@@ -1,9 +1,9 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { TeamView } from "../_components/team-view";
+import { AgentDetail } from "../_components/agent-detail";
 
 export default function AgentDetailPage() {
   const { agentId } = useParams<{ agentId: string }>();
-  return <TeamView selectedId={agentId} />;
+  return <AgentDetail agentId={agentId} />;
 }

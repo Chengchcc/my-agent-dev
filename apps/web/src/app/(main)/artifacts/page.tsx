@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ArtifactPreview } from "@/components/ArtifactPreview";
+import { CopyButton } from "@/components/ops/CopyButton";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { KpiTile, MonoLabel, StatusPill } from "@/components/patterns";
 import { Button } from "@/components/ui/button";
@@ -268,14 +269,7 @@ export default function ArtifactsPage() {
                       <Button variant="outline" size="sm" onClick={() => openPreview(a.url)}>
                         Preview
                       </Button>
-                      <button
-                        type="button"
-                        className="rounded p-1.5 text-(--mute) transition-colors hover:bg-(--panel2) hover:text-(--ink)"
-                        aria-label="Copy url"
-                        onClick={() => void navigator.clipboard.writeText(a.url)}
-                      >
-                        Copy
-                      </button>
+                      <CopyButton text={a.url} label="artifact URL" />
                       <button
                         className="rounded p-1.5 text-(--err) transition-colors hover:bg-(--err)/10"
                         aria-label={`Delete ${a.url}`}

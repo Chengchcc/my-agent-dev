@@ -15,7 +15,7 @@
 cd apps/backend && ANTHROPIC_API_KEY=sk-... BACKEND_AUTH_TOKEN=dev bun run src/main.ts
 
 # 浏览器界面
-cd apps/web && BACKEND_URL=http://localhost:3000 BACKEND_TOKEN=dev bun run dev
+cd apps/web && BACKEND_URL=http://localhost:3000 BACKEND_AUTH_TOKEN=dev bun run dev
 ```
 
 各应用的参数、环境变量与内部数据流详见其子目录 README。

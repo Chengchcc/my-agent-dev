@@ -255,8 +255,8 @@ export default function TodayPage() {
           />
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="min-w-0 space-y-4">
+        <div className="grid gap-4 lg:grid-cols-4">
+          <div className="min-w-0 space-y-4 lg:col-span-3">
             {waitingHuman.length > 0 && (
               <section
                 id="needs-you"
@@ -426,7 +426,7 @@ export default function TodayPage() {
             )}
           </div>
 
-          <div className="space-y-4">
+          <div className="min-w-0 space-y-4 lg:col-span-1">
             {scheduledLoops.length > 0 && (
               <section className="rounded-lg border border-(--hairline) bg-(--panel) p-4">
                 <div className="mb-3 flex items-center justify-between">

@@ -19,6 +19,7 @@ export default async function ExecutionTracePage({
       execution={trace.execution}
       events={trace.events}
       nodeRuns={trace.nodeRuns}
+      pendingHuman={trace.pendingHuman}
     />
   );
 }

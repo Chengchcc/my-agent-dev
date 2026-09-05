@@ -6,4 +6,5 @@ export const agentKeys = {
   detail: (id: string) => [...agentKeys.details(), id] as const,
   identity: (id: string) => [...agentKeys.all, "identity", id] as const,
   memory: (id: string) => [...agentKeys.all, "memory", id] as const,
+  workspace: (id: string, path: string) => [...agentKeys.all, "workspace", id, path] as const,
 };
