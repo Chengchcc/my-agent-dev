@@ -28,16 +28,20 @@ function fmtTokens(n: number): string {
 
 function UsageRow({ label, t }: { label: string; t: Totals }) {
   return (
-    <div className="py-1">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-kicker text-(--mute)">
+    <div className="rounded-lg border border-(--hairline) bg-(--panel) p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-mono text-[9px] font-semibold uppercase tracking-kicker text-(--mute)">
           {label}
         </span>
-        <span className="text-xs font-medium text-(--ink-strong) tabular-nums">
-          {fmtTokens(t.inputTokens + t.outputTokens)} tok · ≈${t.costUsd.toFixed(2)}
+        <span className="font-mono text-[9px] text-(--ok) tabular-nums">
+          ≈${t.costUsd.toFixed(2)}
         </span>
       </div>
-      <p className="text-[10px] text-(--mute) tabular-nums">
+      <p className="mt-0.5 font-display text-xl font-semibold tracking-tight text-(--ink-strong) tabular-nums">
+        {fmtTokens(t.inputTokens + t.outputTokens)}
+        <span className="ml-1 font-mono text-[9px] font-normal text-(--mute)">tok</span>
+      </p>
+      <p className="mt-0.5 font-mono text-[9px] text-(--mute) tabular-nums">
         in {fmtTokens(t.inputTokens)} · out {fmtTokens(t.outputTokens)}
         {t.cacheReadTokens + t.cacheWriteTokens > 0 &&
           ` · cache ${fmtTokens(t.cacheReadTokens + t.cacheWriteTokens)}`}
@@ -58,7 +62,7 @@ export function UsagePanel({
   const { data } = useUsageSummary({ conversationId, agentId });
 
   return (
-    <div className="mt-4 border-t border-(--hairline) pt-3">
+    <div className="mt-4 space-y-2">
       {conversationId && <UsageRow label="This chat" t={data?.conversation ?? EMPTY} />}
       {agentId && <UsageRow label="This agent" t={data?.agent ?? EMPTY} />}
       <UsageRow label="Today" t={data?.today ?? EMPTY} />
