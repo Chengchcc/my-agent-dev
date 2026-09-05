@@ -56,6 +56,7 @@ function renderBreadcrumb(
 export function PageHeader({
   breadcrumb,
   title,
+  pill,
   kicker,
   subtitle,
   description,
@@ -67,6 +68,8 @@ export function PageHeader({
    *  current page. Renders through the one shared ui/breadcrumb grammar. */
   breadcrumb?: ReactNode | string | ReadonlyArray<{ label: string; href?: string }>;
   title: string;
+  /** Small status chip rendered inline after the title. */
+  pill?: ReactNode;
   kicker?: string;
   subtitle?: string;
   /** Legacy single action (kept for existing callers). */
@@ -76,7 +79,7 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="border-b border-(--hairline) p-4 sm:px-6 lg:px-8 ">
+    <div className="border-b border-(--hairline) p-4 sm:px-6 lg:px-8">
       {breadcrumb != null && (
         <Breadcrumb className="mb-1">
           <BreadcrumbList>{renderBreadcrumb(breadcrumb)}</BreadcrumbList>
@@ -89,7 +92,10 @@ export function PageHeader({
               {kicker}
             </p>
           )}
-          <h1 className="text-h1/tight font-semibold  text-(--ink)">{title}</h1>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-h1/tight font-semibold text-(--ink)">{title}</h1>
+            {pill}
+          </div>
           {(subtitle ?? description) && (
             <p className="mt-0.5 text-(--text-body) text-(--mute)">{subtitle ?? description}</p>
           )}

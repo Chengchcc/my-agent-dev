@@ -3,8 +3,8 @@
 import { AlertCircle, Bot, Boxes, Link2, Plug, Power } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Page, PageBody } from "@/components/page";
-import { KpiTile, MonoLabel, PageHeader, StatusPill } from "@/components/patterns";
+import { Page, PageBody, PageHeader } from "@/components/page";
+import { KpiTile, MonoLabel, StatusPill } from "@/components/patterns";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useAgentList } from "@/features/agents/hooks";
 import { useKnowledgePacks } from "@/features/knowledge/hooks";

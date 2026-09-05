@@ -55,36 +55,6 @@ export function StatusPill({
   );
 }
 
-/** Breadcrumb + display title + optional pill + right-aligned actions. */
-export function PageHeader({
-  breadcrumb,
-  title,
-  pill,
-  actions,
-  className,
-}: {
-  breadcrumb: ReactNode;
-  title: ReactNode;
-  pill?: ReactNode;
-  actions?: ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={cn("flex flex-wrap items-end justify-between gap-3", className)}>
-      <div className="min-w-0">
-        <MonoLabel className="text-(--faint)">{breadcrumb}</MonoLabel>
-        <div className="mt-1 flex items-center gap-2.5">
-          <h1 className="truncate font-display text-h1 font-semibold tracking-tight text-(--ink-strong)">
-            {title}
-          </h1>
-          {pill}
-        </div>
-      </div>
-      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
-    </div>
-  );
-}
-
 /** Compact metric tile: micro-label, oversized tabular value, detail, bar. */
 export function KpiTile({
   label,
