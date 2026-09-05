@@ -113,11 +113,11 @@ export default function TodayPage() {
   const runRunning = todayRuns.filter((r) =>
     ["running", "waiting", "commit_failed"].includes(r.status),
   ).length;
-  const totalTokens = todayRuns.reduce(
-    (sum, r) => sum + (r.usage?.inputTokens ?? 0) + (r.usage?.outputTokens ?? 0),
-    0,
-  );
-  const cost24h = (telemetry.data?.costByHour ?? []).reduce((sum, h) => sum + h.costUsd, 0);
+  // Tokens & cost are the rolling 24h telemetry aggregate (same source as the
+  // System banner) — not the calendar-day run rows, which are sparse and make
+  // the KPI read 0 while the system already shows a real 24h number.
+  const totalTokens = (telemetry.data?.inputTokens ?? 0) + (telemetry.data?.outputTokens ?? 0);
+  const cost24h = telemetry.data?.costUsd ?? 0;
 
   const doneRatio =
     runSucceeded + runFailed + runRunning === 0
