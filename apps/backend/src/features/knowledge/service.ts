@@ -103,6 +103,10 @@ export function createKnowledgeService(deps: {
       });
     },
 
+    getById(id: string): KnowledgePackRow | null {
+      return deps.port.getById(id);
+    },
+
     async install(input): Promise<KnowledgePackRow> {
       if (input.sourceKind !== "builtin" && !input.sourceUrl && !deps.zipBuffer) {
         throw new KnowledgeValidationError(

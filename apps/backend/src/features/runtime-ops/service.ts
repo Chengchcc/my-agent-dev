@@ -3,6 +3,7 @@
 // the Ops API exposes only surface health. Run execution state lives under
 // /api/agent-runs (see features/agent-run/http.ts).
 
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import type { RuntimeOpsStore } from "./store.js";
 
 export interface AgentRuntimeStatus {
@@ -42,7 +43,7 @@ export function createRuntimeOpsService(deps: {
       let dbSizeBytes: number | null = null;
       if (deps.dbPath) {
         try {
-          dbSizeBytes = require("node:fs").statSync(deps.dbPath).size;
+          dbSizeBytes = statSync(deps.dbPath).size;
         } catch {
           dbSizeBytes = null;
         }
@@ -50,19 +51,17 @@ export function createRuntimeOpsService(deps: {
       // Direct children of this process — the spawned agent-run subprocesses.
       const subprocesses: Array<{ pid: number; cmd: string; rssKb: number; cpuSec: number }> = [];
       try {
-        const fs = require("node:fs");
         const myPid = process.pid;
         const clkTck = 100; // standard Linux USER_HZ
-        for (const name of fs.readdirSync("/proc")) {
+        for (const name of readdirSync("/proc")) {
           if (!/^\d+$/.test(name)) continue;
           const pid = Number(name);
           if (pid === myPid) continue;
           let stat = "";
           let cmdline = "";
           try {
-            stat = fs.readFileSync(`/proc/${name}/stat`, "utf8");
-            cmdline = fs
-              .readFileSync(`/proc/${name}/cmdline`, "utf8")
+            stat = readFileSync(`/proc/${name}/stat`, "utf8");
+            cmdline = readFileSync(`/proc/${name}/cmdline`, "utf8")
               .replaceAll("\u0000", " ")
               .trim();
           } catch {

@@ -84,7 +84,8 @@ if (wfSample) {
   const insNode = db.query(
     `INSERT INTO workflow_node_run (execution_id, node_id, run_id, status, "order", output, routed_to, error, created_at, terminal_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
   );
-  const wfId = String(wfSample.workflow_id);
+  const wfId: string = String(wfSample.workflow_id);
+  void wfId; // eslint-disable-line @typescript-eslint/no-unused-vars -- documents the source pack
   const definition = String(wfSample.definition);
   const plans = [
     {
