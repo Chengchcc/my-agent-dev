@@ -29,6 +29,10 @@ import type { McpCatalogRow } from "@/features/mcp/queries";
 import { mcpKeys } from "@/features/mcp/query-keys";
 import { type AgentRow, api } from "@/lib/api";
 
+function hhmm(ts: number): string {
+  return new Date(ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
 type EditMcpRow = McpCatalogRow & {
   args?: string[];
   env?: Record<string, string>;
@@ -733,6 +737,11 @@ export default function McpCatalogPage() {
                         <span className="rounded bg-(--canvas-soft) px-1.5 py-0.5 font-mono text-[10px] text-(--ink)">
                           {s.runtimeToolsCount ?? s.toolsCount ?? 0}
                         </span>
+                        {s.runtimeCheckedAt && (
+                          <span className="font-mono text-[10px] text-(--faint)">
+                            checked {hhmm(s.runtimeCheckedAt)}
+                          </span>
+                        )}
                         <MonoLabel className="text-(--faint)">Bound agents:</MonoLabel>
                         {usedByNames.length > 0 ? (
                           usedByNames.slice(0, 3).map((name) => (

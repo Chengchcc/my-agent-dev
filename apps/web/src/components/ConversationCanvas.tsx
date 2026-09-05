@@ -320,6 +320,17 @@ export function ConversationCanvas({
               </>
             )}
             {!label && <StatusPill tone="idle">idle</StatusPill>}
+            {busy && currentRunId && (
+              <button
+                type="button"
+                onClick={() => {
+                  api.cancelAgentRun(currentRunId).then(() => toast.success("Stopped"));
+                }}
+                className="rounded-sm border border-(--err)/40 px-2 py-0.5 font-mono text-[10px] uppercase tracking-kicker text-(--err) transition-colors hover:bg-(--err)/10"
+              >
+                stop
+              </button>
+            )}
             <Button
               variant="ghost"
               size="icon"

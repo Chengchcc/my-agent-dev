@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Page, PageBody, PageHeader } from "@/components/page";
+import { Page, PageBody } from "@/components/page";
+import { KpiTile, PageHeader, StatusPill } from "@/components/patterns";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -63,6 +64,17 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
   } | null>(null);
   const [runVals, setRunVals] = useState<Record<string, string>>({});
   const [running, setRunning] = useState(false);
+
+  const cronCount = definitions.filter((d) => (d.triggers ?? []).length > 0).length;
+  const dayAgo = Date.now() - 86_400_000;
+  const recentRuns = definitions.filter((d) => (d.lastExecution?.createdAt ?? 0) > dayAgo).length;
+  const recentFailures = definitions.filter(
+    (d) =>
+      d.lastExecution &&
+      d.lastExecution.status === "failure" &&
+      (d.lastExecution.createdAt ?? 0) > dayAgo,
+  ).length;
+
   async function create(templateId?: string) {
     const id = `wf-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     let def: Record<string, unknown> = defaultDraft(id) as Record<string, unknown>;
@@ -126,16 +138,35 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
   return (
     <Page>
       <PageHeader
-        breadcrumb={[{ label: "Work", href: "/today" }, { label: "Workflows" }]}
+        breadcrumb="Work / Workflows"
         title="Workflows"
-        description="Agentic workflow definitions"
-        action={
+        pill={
+          cronCount > 0 ? <StatusPill tone="idle">{cronCount} scheduled</StatusPill> : undefined
+        }
+        actions={
           <Button size="sm" onClick={() => setNewOpen(true)}>
             + New
           </Button>
         }
       />
-      <PageBody className="space-y-2">
+      <PageBody size="wide" className="space-y-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <KpiTile label="Definitions" value={definitions.length} detail="workflows" />
+          <KpiTile
+            label="Scheduled"
+            value={cronCount}
+            detail="cron triggers"
+            bar={definitions.length === 0 ? 0 : (cronCount / definitions.length) * 100}
+            barTone="violet"
+          />
+          <KpiTile
+            label="Last 24h runs"
+            value={recentRuns}
+            detail={recentFailures > 0 ? `${recentFailures} failed` : "all clear"}
+            bar={recentRuns === 0 ? 0 : ((recentRuns - recentFailures) / recentRuns) * 100}
+            barTone="ok"
+          />
+        </div>
         {definitions.map((d) => (
           <div
             key={d.workflowId}

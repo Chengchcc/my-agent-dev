@@ -282,6 +282,16 @@ export default function TodayPage() {
                         </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5">
+                        <span
+                          className="rounded-sm px-1.5 py-0.5 font-mono text-[10px]"
+                          style={{
+                            backgroundColor:
+                              "color-mix(in srgb, var(--accent-violet) 12%, transparent)",
+                            color: "var(--accent-violet)",
+                          }}
+                        >
+                          {e.triggeredBy?.startsWith("cron:") ? "cron" : "manual"}
+                        </span>
                         <button
                           type="button"
                           className="rounded-sm border border-(--err)/40 px-2 py-1 text-[11px] text-(--err) transition-colors hover:bg-(--err)/10"

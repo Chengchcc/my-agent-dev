@@ -48,6 +48,7 @@ export default function ArtifactsPage() {
   const deleteArtifact = useDeleteArtifact();
   const uploading = uploadArtifact.isPending;
   const [query, setQuery] = useState("");
+  const [sortBy, setSortBy] = useState<"date" | "size" | "name">("date");
   const [folderFilter, setFolderFilter] = useState("all");
 
   const folders = useMemo(
@@ -55,11 +56,17 @@ export default function ArtifactsPage() {
     [artifacts],
   );
   const totalBytes = artifacts.reduce((sum, a) => sum + a.size, 0);
-  const visible = artifacts.filter((a) => {
-    if (folderFilter !== "all" && !a.url.startsWith(`artifacts://${folderFilter}/`)) return false;
-    if (query && !a.url.toLowerCase().includes(query.toLowerCase())) return false;
-    return true;
-  });
+  const visible = artifacts
+    .filter((a) => {
+      if (folderFilter !== "all" && !a.url.startsWith(`artifacts://${folderFilter}/`)) return false;
+      if (query && !a.url.toLowerCase().includes(query.toLowerCase())) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortBy === "size") return b.size - a.size;
+      if (sortBy === "name") return a.url.localeCompare(b.url);
+      return b.updatedAt - a.updatedAt;
+    });
 
   async function openPreview(url: string) {
     try {
@@ -180,15 +187,27 @@ export default function ArtifactsPage() {
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-2 rounded-sm border border-(--hairline) bg-(--canvas-soft) px-2 py-1 md:w-64">
-            <Search className="size-3.5 text-(--faint)" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="filter by url…"
-              className="w-full bg-transparent font-mono text-[11px] text-(--ink) placeholder:text-(--faint) focus:outline-none"
-              aria-label="Filter artifacts by url"
-            />
+          <div className="flex items-center gap-2">
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as "date" | "size" | "name")}
+              className="rounded border border-(--hairline) bg-(--canvas-soft) px-2 py-1 font-mono text-[11px] text-(--mute)"
+              aria-label="Sort artifacts"
+            >
+              <option value="date">Sort: newest</option>
+              <option value="size">Sort: size</option>
+              <option value="name">Sort: name</option>
+            </select>
+            <div className="flex items-center gap-2 rounded-sm border border-(--hairline) bg-(--canvas-soft) px-2 py-1 md:w-64">
+              <Search className="size-3.5 text-(--faint)" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="filter by url…"
+                className="w-full bg-transparent font-mono text-[11px] text-(--ink) placeholder:text-(--faint) focus:outline-none"
+                aria-label="Filter artifacts by url"
+              />
+            </div>
           </div>
         </div>
 

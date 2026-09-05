@@ -7,7 +7,7 @@ import { AgentRunsTable } from "@/components/ops/AgentRunsTable";
 import { QueryState } from "@/components/ops/QueryState";
 import { SurfaceHealthPanel } from "@/components/ops/SurfaceHealthPanel";
 import { Page, PageBody } from "@/components/page";
-import { KpiTile, PageHeader, StatusPill } from "@/components/patterns";
+import { KpiTile, MonoLabel, PageHeader, StatusPill } from "@/components/patterns";
 import { Badge } from "@/components/ui/badge";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import {
@@ -130,6 +130,28 @@ export default function SystemPage() {
               </h2>
               <StatusPill tone="idle">24h window</StatusPill>
             </div>
+            {telemetryQuery.data && telemetryQuery.data.costByHour.length > 0 && (
+              <div className="rounded-lg border border-(--hairline) bg-(--panel) p-4">
+                <MonoLabel>Token consumption &amp; cost burn</MonoLabel>
+                <ChartContainer
+                  config={{ costUsd: { label: "Cost", color: "var(--chart-1)" } }}
+                  className="mt-2 h-28 w-full"
+                >
+                  <BarChart data={telemetryQuery.data.costByHour}>
+                    <CartesianGrid vertical={false} />
+                    <XAxis
+                      dataKey="hour"
+                      tickFormatter={(h: number) =>
+                        new Date(h).toLocaleTimeString(undefined, { hour: "numeric" })
+                      }
+                    />
+                    <YAxis width={40} tickFormatter={(v: number) => `$${v}`} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Bar dataKey="costUsd" fill="var(--chart-1)" radius={2} />
+                  </BarChart>
+                </ChartContainer>
+              </div>
+            )}
             <QueryState
               query={telemetryQuery}
               empty={(d) => d.runs === 0}
