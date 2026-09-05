@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
+import { RunWaterfall } from "@/components/ops/RunWaterfall";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -94,6 +95,19 @@ export default function SystemRunDetailPage() {
                       </div>
                     </div>
                   )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Phase waterfall</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <RunWaterfall
+                  runId={run.runId}
+                  startTs={run.createdAt}
+                  endTs={run.terminalAt ?? null}
+                />
               </CardContent>
             </Card>
 

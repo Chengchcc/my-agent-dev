@@ -37,6 +37,13 @@ export function telemetrySummaryQuery() {
   });
 }
 
+export function runEventsQuery(runId: string) {
+  return queryOptions({
+    queryKey: [...opsKeys.runDetail(runId), "events"] as const,
+    queryFn: () => api.getRunTelemetry(runId),
+  });
+}
+
 export function systemMetricsQuery() {
   return queryOptions({
     queryKey: [...opsKeys.all, "system-metrics"] as const,
