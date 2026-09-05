@@ -123,7 +123,9 @@ const assertions: Assertion[] = [
       withPage("/system", async (page) => {
         await loginIfNeeded(page);
         const text = await page.evaluate(() => document.body.innerText);
-        if (/404|not found/i.test(text)) throw new Error("404 text present");
+        // Word-bounded: telemetry token counts like "4041 tok" must not trip it.
+        if (/\b404\b[^\n]{0,40}(error|not found)|\bnot found\b/i.test(text))
+          throw new Error("404 text present");
       }),
   },
   {
