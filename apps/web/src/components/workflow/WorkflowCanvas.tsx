@@ -114,6 +114,8 @@ function buildGraph(
         label: n.label,
         type: n.type,
         layer: n.layer,
+        summary: n.summary,
+        meta: n.meta,
         status,
         ...(interactive && onNodeDelete ? { onDelete: () => onNodeDelete(n.id) } : {}),
         ...(n.type === "human"
@@ -149,7 +151,11 @@ function buildGraph(
             strokeDasharray: "8 6",
             filter: "drop-shadow(0 0 6px rgba(245,158,11,0.6))",
           }
-        : undefined,
+        : {
+            stroke: "var(--wf-node-border)",
+            strokeWidth: 1.5,
+            strokeDasharray: "6 5",
+          },
       animated: lit,
     };
   });

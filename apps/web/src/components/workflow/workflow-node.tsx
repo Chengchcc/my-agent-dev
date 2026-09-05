@@ -32,6 +32,9 @@ const STATUS_STYLE: Record<string, { color: string; label: string }> = {
 export function WorkflowNodeCard({ data, selected }: NodeProps) {
   const t = (data as { type?: string }).type ?? "script";
   const status = (data as { status?: string }).status;
+  const summaryProp = (data as { summary?: string }).summary;
+  const metaProp = (data as { meta?: string }).meta;
+  const askRendered = t === "human" && Boolean((data as { askQuestion?: unknown }).askQuestion);
   const onDelete = (data as { onDelete?: () => void }).onDelete;
   const band = typeColor[t] ?? "var(--wf-info)";
   return (
@@ -88,9 +91,13 @@ export function WorkflowNodeCard({ data, selected }: NodeProps) {
             const Icon = typeIcon[t] ?? Bot;
             return <Icon className="size-4" style={{ color: band }} />;
           })()}
-          <span className="font-display text-sm font-semibold">{String(data.label)}</span>
+          <span className="truncate font-display text-sm font-semibold">{String(data.label)}</span>
         </div>
-        <div className="font-mono text-[11px] text-(--mute)">{t} node</div>
+        {!(askRendered && summaryProp) && (
+          <div className="truncate font-mono text-[11px] text-(--mute)">
+            {summaryProp || `${t} node`}
+          </div>
+        )}
       </div>
       {t === "human" && (data as { askQuestion?: AskQuestionInput }).askQuestion && (
         <div className="pointer-events-auto px-3 pb-3">
@@ -130,6 +137,15 @@ export function WorkflowNodeCard({ data, selected }: NodeProps) {
               ).onSubmitHuman?.({ answers: result.answers } as Record<string, unknown>);
             }}
           />
+        </div>
+      )}
+      {metaProp && t !== "human" && (
+        <div
+          className="absolute inset-x-2 bottom-2 flex items-center justify-between rounded bg-(--canvas) px-2 py-1 font-mono text-[9px]"
+          style={{ pointerEvents: "none" }}
+        >
+          <span className="truncate text-(--mute)">{metaProp}</span>
+          <span className="shrink-0 text-(--faint)">{t}</span>
         </div>
       )}
       <span
