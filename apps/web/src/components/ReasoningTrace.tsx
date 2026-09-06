@@ -55,20 +55,27 @@ export function ReasoningTrace({
         b.type === "tool_use" && !!b.id && !HIDDEN_TOOLS.has(b.name ?? ""),
     );
     // Narrative text: prefer the .text field (source of truth for content),
-    // fall back to joining the text blocks.
+    // fall back to joining the text blocks. Tool-role messages only supply
+    // results (consumed cross-message via resultMap), never a narrative row.
     const narrative =
-      extractText(m.content) ||
-      blocks
-        .filter((b): b is { type: "text"; text: string } => b.type === "text")
-        .map((b) => b.text)
-        .join(" ")
-        .trim();
+      m.content.role === "tool"
+        ? ""
+        : extractText(m.content) ||
+          blocks
+            .filter((b): b is { type: "text"; text: string } => b.type === "text")
+            .map((b) => b.text)
+            .join(" ")
+            .trim();
     return { m, thinking, narrative, tools };
   });
 
   return (
     <div className="my-1 space-y-2">
       {roundBlocks.map(({ m, thinking, narrative, tools }, idx) => {
+        // Tool-role messages supply results only (consumed cross-message via
+        // resultMap by the preceding assistant round's ToolStep); they never
+        // render a standalone row.
+        if (m.content.role === "tool") return null;
         // The whole turn is one sender group. Only the first rendered bubble
         // carries the sender marker; only the last rendered bubble carries the
         // timestamp. The conclusion, when present, is always the last.
