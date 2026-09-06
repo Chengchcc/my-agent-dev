@@ -392,7 +392,7 @@ export function Timeline({
                   />
                 )}
                 {t.ask && (
-                  <div className="px-1 py-1">
+                  <div className="p-1">
                     <AskQuestionCard
                       input={{ questions: t.ask.questions as AskQuestionInput["questions"] }}
                       onSubmit={(result: AskQuestionResult) =>

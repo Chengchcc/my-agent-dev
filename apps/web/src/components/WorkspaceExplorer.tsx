@@ -208,7 +208,7 @@ function FilteredList({
   const q = query.toLowerCase();
   const hits = entries.filter((e) => e.name.toLowerCase().includes(q));
   if (hits.length === 0) {
-    return <p className="px-2 py-2 text-xs text-(--mute)">No matching files.</p>;
+    return <p className="p-2 text-xs text-(--mute)">No matching files.</p>;
   }
   return (
     <ul className="space-y-0.5 rounded-md border border-(--hairline) p-1.5">
