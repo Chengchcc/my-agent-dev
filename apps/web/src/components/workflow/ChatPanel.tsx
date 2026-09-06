@@ -15,17 +15,20 @@ import type { SenderRef } from "@/lib/conversation-reducer";
  *  only sends messages and shows the transcript.
  *
  *  `contextBlock` is injected as a leading XML context in the sent message so
- *  the agent knows WHICH resource it is editing and its current goal. */
+ *  the agent knows WHICH resource it is editing and its current goal.
+ *  `suggestions` are clickable example commands shown in the empty state. */
 export function ChatPanel({
   conversationId,
   title = "Chat",
   contextBlock,
   placeholder = "Ask the agent to edit…",
+  suggestions = [],
 }: {
   conversationId: string;
   title?: string;
   contextBlock?: string;
   placeholder?: string;
+  suggestions?: string[];
 }) {
   const { state, send, transients, transientTools } = useConversation(conversationId);
   const [instruction, setInstruction] = useState("");
@@ -60,6 +63,8 @@ export function ChatPanel({
     };
   });
 
+  const empty = state.items.length === 0 && bubbles.length === 0;
+
   function submit() {
     const text = instruction.trim();
     if (!text || !ready) return;
@@ -78,7 +83,31 @@ export function ChatPanel({
         </span>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <Timeline messages={state.items} conversationId={conversationId} transients={bubbles} />
+        {empty ? (
+          <div className="px-3 py-3">
+            <div className="rounded-lg border border-dashed border-(--hairline) bg-(--canvas-soft)/40 p-3">
+              <p className="mb-1.5 text-xs text-(--mute)">
+                Describe a change and the agent will propose it — you review and save on the left.
+                Example:
+              </p>
+              <ul className="space-y-1">
+                {suggestions.map((s) => (
+                  <li key={s}>
+                    <button
+                      type="button"
+                      onClick={() => setInstruction(s)}
+                      className="block w-full rounded border border-(--hairline) bg-(--panel2)/40 px-2 py-1 text-left font-mono text-[11px] text-(--ink) transition-colors hover:border-(--primary)/50 hover:bg-(--panel2)"
+                    >
+                      {s}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        ) : (
+          <Timeline messages={state.items} conversationId={conversationId} transients={bubbles} />
+        )}
       </div>
       <div className="flex gap-2 border-t border-(--hairline) p-2">
         <textarea

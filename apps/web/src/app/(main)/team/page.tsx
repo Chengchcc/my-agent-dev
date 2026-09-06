@@ -3,7 +3,6 @@
 import { AlertCircle, Bot, Boxes, Link2, Plug, Power } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { AgentForm } from "@/components/AgentForm";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { KpiTile, MonoLabel, StatusPill } from "@/components/patterns";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -105,7 +104,14 @@ export default function TeamPage() {
             </StatusPill>
           ) : undefined
         }
-        actions={<AgentForm />}
+        actions={
+          <Link
+            href="/team/new/edit"
+            className="inline-flex h-7 items-center gap-1 rounded-md bg-(--primary) px-2.5 text-[0.8rem] font-semibold text-(--on-primary) transition-colors hover:bg-(--primary-soft)"
+          >
+            + New Agent
+          </Link>
+        }
       />
       <PageBody size="wide" className="space-y-4">
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">

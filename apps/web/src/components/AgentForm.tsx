@@ -299,7 +299,7 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel, alwaysOpen }: Ag
         }
         form.reset();
         setOpen(false);
-        router.push(`/team/${agent.id}`);
+        router.push(`/team/${agent.id}/edit`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to save agent";
         setServerError(msg);

@@ -590,6 +590,12 @@ export function AgenticWorkflowEditor({
                     .filter(Boolean)
                     .join("\n")}
                   placeholder="Ask the agent to edit the workflow…"
+                  suggestions={[
+                    "Add a script node that greps for TODO comments",
+                    "Insert a human gate before the final report",
+                    "Make the report agent scan only src/, skip docs/",
+                    "Add an edge from detect to a new failure end node",
+                  ]}
                 />
               </div>
             )}
