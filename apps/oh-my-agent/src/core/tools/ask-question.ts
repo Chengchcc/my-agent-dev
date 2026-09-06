@@ -36,7 +36,20 @@ export function createAskQuestionTool(): PluginTool {
       properties: {
         questions: {
           type: "array",
-          items: { type: "object" },
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string", description: "Unique id for this question" },
+              question: { type: "string", description: "The question text" },
+              kind: { type: "string", enum: ["select", "text"] },
+              options: {
+                type: "array",
+                items: { type: "string" },
+                description: "Required when kind=select",
+              },
+            },
+            required: ["id", "question"],
+          },
         },
       },
       required: ["questions"],

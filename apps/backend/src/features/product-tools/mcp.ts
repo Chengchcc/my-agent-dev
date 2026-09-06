@@ -149,13 +149,26 @@ export async function createProductToolsMcpServer(
         {
           name: "ask_question",
           description:
-            "Ask the user structured questions and wait for answers. Questions are select (options) or text (free input). Returns {answers:[{id,selectedValues,freeText}]}. Blocks until the user answers in the product UI.",
+            "Ask the user structured questions and wait for answers. Each question needs a string id and question text, a kind of select (with options) or text (free input). Returns {answers:[{id,selectedValues,freeText}]}. Blocks until the user answers in the product UI.",
           inputSchema: {
             type: "object",
             properties: {
               questions: {
                 type: "array",
-                items: { type: "object" },
+                items: {
+                  type: "object",
+                  properties: {
+                    id: { type: "string", description: "Unique id for this question" },
+                    question: { type: "string", description: "The question text" },
+                    kind: { type: "string", enum: ["select", "text"] },
+                    options: {
+                      type: "array",
+                      items: { type: "string" },
+                      description: "Required when kind=select",
+                    },
+                  },
+                  required: ["id", "question"],
+                },
               },
               identity: identitySchema,
             },
