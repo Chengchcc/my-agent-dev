@@ -5,8 +5,8 @@ import { CircleCheck, Plug, RefreshCw, Server, Trash2, Wrench } from "lucide-rea
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AssignToAgentSelect } from "@/components/AssignToAgentSelect";
+import { CapabilityListPage } from "@/components/capability-list-page";
 import { PackAgentsTab } from "@/components/pack-agents-tab";
-import { Page, PageBody, PageHeader } from "@/components/page";
 import { KpiTile, MonoLabel, StatusPill, type StatusTone } from "@/components/patterns";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,7 +19,7 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { InfoBanner, ListToolbar, SubTabs } from "@/components/ui/polish";
+import { SubTabs } from "@/components/ui/polish";
 import { ResourceDetailSheet } from "@/components/ui/resource-detail-sheet";
 import { Text } from "@/components/ui/text";
 import { Textarea } from "@/components/ui/textarea";
@@ -580,8 +580,8 @@ export default function McpCatalogPage() {
   };
 
   return (
-    <Page>
-      <PageHeader
+    <>
+      <CapabilityListPage
         breadcrumb="Team / Capabilities / MCP hub"
         title="MCP Servers & Tool Bindings"
         pill={
@@ -608,16 +608,13 @@ export default function McpCatalogPage() {
             </Button>
           </>
         }
-      />
-      <PageBody>
-        <div className="space-y-6">
-          <InfoBanner
-            id="ib:mcp-help"
-            title="How this page works"
-            body="Server definitions persist in mcp-servers.json (file-first). Add a server here once, then enable it per agent from the agent's MCP tab. Status prefers the latest REAL runtime mount result reported by the agent child; before any Run it falls back to the backend manager probe."
-          />
-
-          <div data-testid="stat-cards" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        banner={{
+          id: "ib:mcp-help",
+          title: "How this page works",
+          body: "Server definitions persist in mcp-servers.json (file-first). Add a server here once, then enable it per agent from the agent's MCP tab. Status prefers the latest REAL runtime mount result reported by the agent child; before any Run it falls back to the backend manager probe.",
+        }}
+        kpis={
+          <>
             <KpiTile
               label="Servers"
               value={servers.length}
@@ -639,8 +636,9 @@ export default function McpCatalogPage() {
               detail="manager reachable"
             />
             <KpiTile label="Tools" value={tools} icon={Wrench} detail="exposed methods" />
-          </div>
-
+          </>
+        }
+        filters={
           <div className="flex flex-wrap items-center gap-1.5">
             {(["all", "stdio", "sse"] as const).map((t) => (
               <button
@@ -659,175 +657,168 @@ export default function McpCatalogPage() {
               </button>
             ))}
           </div>
-
-          <ListToolbar
-            searchValue={query}
-            onSearch={setQuery}
-            placeholder="Search by name, command or URL"
-          />
-
-          <div>
-            <div className="flex items-center gap-2.5">
-              <h2 className="font-display text-lg font-semibold tracking-tight text-(--ink-strong)">
-                Active MCP Servers
-              </h2>
-              <StatusPill tone="idle">{servers.length} total</StatusPill>
-              <MonoLabel className="text-(--faint)">click mono id to copy</MonoLabel>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {filtered.map((s) => {
-                const usedByNames = (agentsData ?? [])
-                  .filter((a) => a.mcpServers?.some((m) => m.serverId === s.serverId && m.enabled))
-                  .map((a) => a.name);
-                const status = displayStatus(s);
-                const tone: StatusTone =
-                  status === "ok" ? "success" : status === "err" ? "error" : "idle";
-                const iconTone = s.transport === "sse" ? "var(--accent-violet)" : "var(--primary)";
-                const endpoint = s.transport === "sse" ? (s.url ?? "") : (s.command ?? "");
-                return (
-                  <div
-                    key={s.serverId}
-                    className="group relative flex flex-col justify-between rounded-lg border border-(--hairline) bg-(--panel) p-4 transition-colors hover:bg-(--canvas-soft)"
-                  >
-                    <div className="flex flex-col gap-2.5">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex min-w-0 items-center gap-2.5">
-                          <span
-                            className="flex size-10 shrink-0 items-center justify-center rounded"
-                            style={{
-                              backgroundColor: `color-mix(in srgb, ${iconTone} 10%, transparent)`,
-                              color: iconTone,
-                            }}
-                          >
-                            <Server className="size-5" />
-                          </span>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <span className="truncate font-display text-sm font-semibold text-(--ink-strong)">
-                                {s.name}
-                              </span>
-                              <span
-                                className="shrink-0 rounded bg-(--panel2) px-1.5 py-0.5 font-mono text-[10px] font-medium"
-                                style={{ color: iconTone }}
-                              >
-                                {s.transport}
-                              </span>
-                            </div>
-                            <span className="block truncate font-mono text-[10px] text-(--mute)">
-                              {endpoint}
+        }
+        search={{ value: query, onChange: setQuery, placeholder: "Search by name, command or URL" }}
+      >
+        <div>
+          <div className="flex items-center gap-2.5">
+            <h2 className="font-display text-lg font-semibold tracking-tight text-(--ink-strong)">
+              Active MCP Servers
+            </h2>
+            <StatusPill tone="idle">{servers.length} total</StatusPill>
+            <MonoLabel className="text-(--faint)">click mono id to copy</MonoLabel>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {filtered.map((s) => {
+              const usedByNames = (agentsData ?? [])
+                .filter((a) => a.mcpServers?.some((m) => m.serverId === s.serverId && m.enabled))
+                .map((a) => a.name);
+              const status = displayStatus(s);
+              const tone: StatusTone =
+                status === "ok" ? "success" : status === "err" ? "error" : "idle";
+              const iconTone = s.transport === "sse" ? "var(--accent-violet)" : "var(--primary)";
+              const endpoint = s.transport === "sse" ? (s.url ?? "") : (s.command ?? "");
+              return (
+                <div
+                  key={s.serverId}
+                  className="group relative flex flex-col justify-between rounded-lg border border-(--hairline) bg-(--panel) p-4 transition-colors hover:bg-(--canvas-soft)"
+                >
+                  <div className="flex flex-col gap-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <span
+                          className="flex size-10 shrink-0 items-center justify-center rounded"
+                          style={{
+                            backgroundColor: `color-mix(in srgb, ${iconTone} 10%, transparent)`,
+                            color: iconTone,
+                          }}
+                        >
+                          <Server className="size-5" />
+                        </span>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="truncate font-display text-sm font-semibold text-(--ink-strong)">
+                              {s.name}
+                            </span>
+                            <span
+                              className="shrink-0 rounded bg-(--panel2) px-1.5 py-0.5 font-mono text-[10px] font-medium"
+                              style={{ color: iconTone }}
+                            >
+                              {s.transport}
                             </span>
                           </div>
-                        </div>
-                        <StatusPill tone={tone} className="shrink-0">
-                          {statusLabel(status)}
-                        </StatusPill>
-                      </div>
-                      <p className="line-clamp-2 text-xs text-(--mute)">
-                        {s.runtimeError ?? serverMeta(s) ?? "No runtime probe yet."}
-                      </p>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <MonoLabel className="text-(--faint)">Exposed tools:</MonoLabel>
-                        <span className="rounded bg-(--canvas-soft) px-1.5 py-0.5 font-mono text-[10px] text-(--ink)">
-                          {s.runtimeToolsCount ?? s.toolsCount ?? 0}
-                        </span>
-                        {s.runtimeCheckedAt && (
-                          <span className="font-mono text-[10px] text-(--faint)">
-                            checked {hhmm(s.runtimeCheckedAt)}
+                          <span className="block truncate font-mono text-[10px] text-(--mute)">
+                            {endpoint}
                           </span>
-                        )}
-                        <MonoLabel className="text-(--faint)">Bound agents:</MonoLabel>
-                        {usedByNames.length > 0 ? (
-                          usedByNames.slice(0, 3).map((name) => (
-                            <span
-                              key={name}
-                              className="rounded bg-(--canvas-soft) px-1.5 py-0.5 font-mono text-[10px] text-(--accent-violet)"
-                            >
-                              {name}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="font-mono text-[10px] text-(--warn)">not assigned</span>
-                        )}
+                        </div>
                       </div>
+                      <StatusPill tone={tone} className="shrink-0">
+                        {statusLabel(status)}
+                      </StatusPill>
                     </div>
-                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-(--hairline) pt-2.5">
-                      <button
-                        type="button"
-                        className="font-mono text-[10px] text-(--faint) hover:text-(--primary)"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void navigator.clipboard.writeText(s.serverId);
-                        }}
-                        title="Copy server id"
-                      >
-                        {s.serverId.slice(0, 10)}
-                      </button>
-                      <div className="flex items-center gap-1.5">
-                        <AssignToAgentSelect
-                          agents={agentsData ?? []}
-                          assigned={(agentId) =>
-                            (agentsData ?? []).some(
-                              (ag) =>
-                                ag.id === agentId &&
-                                Boolean(
-                                  ag.mcpServers?.some(
-                                    (m) => m.serverId === s.serverId && m.enabled,
-                                  ),
-                                ),
-                            )
-                          }
-                          onAssign={(agentId) => {
-                            const agent = (agentsData ?? []).find((ag) => ag.id === agentId);
-                            const next = [
-                              ...(agent?.mcpServers ?? []),
-                              { serverId: s.serverId, enabled: true },
-                            ];
-                            void api.updateAgent(agentId, { mcpServers: next });
-                            void qc.invalidateQueries({ queryKey: agentKeys.lists() });
-                          }}
-                        />
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => void beginEdit(s.serverId)}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={test.isPending}
-                          onClick={() => void test.mutate(s.serverId)}
-                        >
-                          {test.isPending ? "Testing…" : "Test"}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-(--err) hover:bg-(--err)/10"
-                          aria-label={`Delete ${s.name}`}
-                          onClick={() => setConfirmServerId(s.serverId)}
-                        >
-                          <Trash2 className="size-3" />
-                        </Button>
-                      </div>
+                    <p className="line-clamp-2 text-xs text-(--mute)">
+                      {s.runtimeError ?? serverMeta(s) ?? "No runtime probe yet."}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <MonoLabel className="text-(--faint)">Exposed tools:</MonoLabel>
+                      <span className="rounded bg-(--canvas-soft) px-1.5 py-0.5 font-mono text-[10px] text-(--ink)">
+                        {s.runtimeToolsCount ?? s.toolsCount ?? 0}
+                      </span>
+                      {s.runtimeCheckedAt && (
+                        <span className="font-mono text-[10px] text-(--faint)">
+                          checked {hhmm(s.runtimeCheckedAt)}
+                        </span>
+                      )}
+                      <MonoLabel className="text-(--faint)">Bound agents:</MonoLabel>
+                      {usedByNames.length > 0 ? (
+                        usedByNames.slice(0, 3).map((name) => (
+                          <span
+                            key={name}
+                            className="rounded bg-(--canvas-soft) px-1.5 py-0.5 font-mono text-[10px] text-(--accent-violet)"
+                          >
+                            {name}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="font-mono text-[10px] text-(--warn)">not assigned</span>
+                      )}
                     </div>
                   </div>
-                );
-              })}
-              {filtered.length === 0 && (
-                <div data-testid="empty-state" className="col-span-full">
-                  <EmptyState
-                    icon={Plug}
-                    title="No servers yet"
-                    description="Add your first MCP server with the Add Server button above."
-                  />
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-(--hairline) pt-2.5">
+                    <button
+                      type="button"
+                      className="font-mono text-[10px] text-(--faint) hover:text-(--primary)"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void navigator.clipboard.writeText(s.serverId);
+                      }}
+                      title="Copy server id"
+                    >
+                      {s.serverId.slice(0, 10)}
+                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <AssignToAgentSelect
+                        agents={agentsData ?? []}
+                        assigned={(agentId) =>
+                          (agentsData ?? []).some(
+                            (ag) =>
+                              ag.id === agentId &&
+                              Boolean(
+                                ag.mcpServers?.some((m) => m.serverId === s.serverId && m.enabled),
+                              ),
+                          )
+                        }
+                        onAssign={(agentId) => {
+                          const agent = (agentsData ?? []).find((ag) => ag.id === agentId);
+                          const next = [
+                            ...(agent?.mcpServers ?? []),
+                            { serverId: s.serverId, enabled: true },
+                          ];
+                          void api.updateAgent(agentId, { mcpServers: next });
+                          void qc.invalidateQueries({ queryKey: agentKeys.lists() });
+                        }}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void beginEdit(s.serverId)}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={test.isPending}
+                        onClick={() => void test.mutate(s.serverId)}
+                      >
+                        {test.isPending ? "Testing…" : "Test"}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-(--err) hover:bg-(--err)/10"
+                        aria-label={`Delete ${s.name}`}
+                        onClick={() => setConfirmServerId(s.serverId)}
+                      >
+                        <Trash2 className="size-3" />
+                      </Button>
+                    </div>
+                  </div>
                 </div>
-              )}
-            </div>
+              );
+            })}
+            {filtered.length === 0 && (
+              <div data-testid="empty-state" className="col-span-full">
+                <EmptyState
+                  icon={Plug}
+                  title="No servers yet"
+                  description="Add your first MCP server with the Add Server button above."
+                />
+              </div>
+            )}
           </div>
         </div>
-      </PageBody>
+      </CapabilityListPage>
 
       <Dialog
         open={showForm}
@@ -1062,6 +1053,6 @@ export default function McpCatalogPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Page>
+    </>
   );
 }
