@@ -9,6 +9,7 @@ export type {
   SSEEventMap,
 } from "./sse.js";
 export {
+  agentConfigEvents,
   ConversationEvent,
   ConversationEventKind,
   conversationEvents,

@@ -578,7 +578,19 @@ export function AgenticWorkflowEditor({
                 className="flex shrink-0 flex-col border-l border-(--hairline) bg-(--panel)/70"
                 style={{ width: chatW, minWidth: chatW }}
               >
-                <ChatPanel workflowId={workflowId} goal={meta?.description ?? meta?.name} />
+                <ChatPanel
+                  conversationId={`workflow:chat:${workflowId}`}
+                  title="Chat"
+                  contextBlock={[
+                    "<workflow-context>",
+                    `<workflowId>${workflowId}</workflowId>`,
+                    `<goal>${meta?.description ?? meta?.name ?? ""}</goal>`,
+                    "</workflow-context>",
+                  ]
+                    .filter(Boolean)
+                    .join("\n")}
+                  placeholder="Ask the agent to edit the workflow…"
+                />
               </div>
             )}
           </div>

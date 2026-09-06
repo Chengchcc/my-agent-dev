@@ -11,8 +11,11 @@ import {
 import { join as pathJoin, resolve as pathResolve, sep } from "node:path";
 import { BACKEND_KINDS } from "@chengchenccc/agent-contract";
 import { Elysia, t } from "elysia";
+import { sseResponse } from "../../http/response.js";
+import { HttpError } from "../../infra/errors.js";
 import { probeCliSetupCapability } from "../lark-bot/provisioner.js";
 import type { LarkSetupManager } from "../lark-bot/setup-manager.js";
+import type { AgentConfigEvent, AgentConfigEventBus } from "./agent-config-events.js";
 import type { AgentIdentityStore } from "./agent-identity.js";
 import type { AgentRow } from "./domain.js";
 
@@ -97,6 +100,8 @@ export function agentRoutes(
   getSetupManager?: () => LarkSetupManager,
   /** Project existence check for the PATCH projects validation. */
   projectExists?: (id: string) => boolean,
+  /** Emits a "changed" event on agent-config writes (SSE live refresh). */
+  configEvents?: AgentConfigEventBus,
 ) {
   const statusOf = (row: AgentRow) => deriveLarkStatus(row, larkStatusOf?.(row.id));
 
@@ -160,6 +165,22 @@ export function agentRoutes(
         throw err;
       }
     })
+    .get("/api/agents/:id/events", ({ request, params: { id } }) => {
+      const bus = configEvents;
+      if (!bus) throw new HttpError("agent config events not configured", 501);
+      const sub = bus.subscribe(id);
+      async function* stream(): AsyncIterable<AgentConfigEvent | { _heartbeat: boolean }> {
+        for await (const ev of sub) yield ev;
+      }
+      return sseResponse(
+        stream(),
+        (ev) =>
+          "_heartbeat" in ev
+            ? { id: `${ev._heartbeat}`, event: "ping", data: null }
+            : { id: String(ev.ts), event: "changed", data: ev },
+        request.signal,
+      );
+    })
     .patch(
       "/api/agents/:id",
       async ({ params: { id }, body }) => {
@@ -186,6 +207,7 @@ export function agentRoutes(
             }
           }
           const row = await svc.update(id, body);
+          configEvents?.emit(id, { trigger: "save", config: row.config });
           return toAgentResponse(row, statusOf(row));
         } catch (err) {
           if (err instanceof AgentNotFoundError)

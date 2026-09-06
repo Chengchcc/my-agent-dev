@@ -44,9 +44,12 @@ interface AgentFormProps {
   editAgent?: AgentRow;
   onSuccess?: () => void;
   triggerLabel?: string;
+  /** Render the form inline (no trigger / no overlay) for the agent edit page's
+   *  persistent left column. */
+  alwaysOpen?: boolean;
 }
 
-export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps) {
+export function AgentForm({ editAgent, onSuccess, triggerLabel, alwaysOpen }: AgentFormProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const isEdit = !!editAgent;
@@ -319,40 +322,57 @@ export function AgentForm({ editAgent, onSuccess, triggerLabel }: AgentFormProps
 
   return (
     <>
-      <Button
-        onClick={() => {
-          form.reset();
-          setServerError("");
-          setSelectedPackIds([]);
-          setSelectedMcpIds([]);
-          setSelectedKnowledgeIds([]);
-          setOpen(true);
-        }}
-        variant={triggerLabel ? "outline" : "default"}
-        size="sm"
-      >
-        {triggerLabel ?? "+ New Agent"}
-      </Button>
+      {!alwaysOpen && (
+        <Button
+          onClick={() => {
+            form.reset();
+            setServerError("");
+            setSelectedPackIds([]);
+            setSelectedMcpIds([]);
+            setSelectedKnowledgeIds([]);
+            setOpen(true);
+          }}
+          variant={triggerLabel ? "outline" : "default"}
+          size="sm"
+        >
+          {triggerLabel ?? "+ New Agent"}
+        </Button>
+      )}
 
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]" role="dialog">
+      {(alwaysOpen || open) && (
+        <div
+          className={
+            alwaysOpen ? "w-full" : "fixed inset-0 z-50 flex items-start justify-center pt-[15vh]"
+          }
+          role="dialog"
+        >
+          {!alwaysOpen && (
+            <div
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setOpen(false)}
+            />
+          )}
+
           <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setOpen(false)}
-          />
-
-          <div className="relative w-full max-w-lg bg-(--canvas) border border-(--hairline) rounded-lg animate-reveal">
+            className={
+              alwaysOpen
+                ? "w-full rounded-lg border border-(--hairline) bg-(--canvas)"
+                : "relative w-full max-w-lg bg-(--canvas) border border-(--hairline) rounded-lg animate-reveal"
+            }
+          >
             <div className="border-b border-(--hairline) px-8 py-5 flex items-center justify-between">
               <h2 className="text-lg font-normal text-(--ink-strong) font-sans">
                 {isEdit ? "Edit Agent" : "Create Agent"}
               </h2>
-              <Button
-                onClick={() => setOpen(false)}
-                className="text-(--mute) hover:text-(--ink) transition-colors"
-                aria-label="Close"
-              >
-                <X size={18} />
-              </Button>
+              {!alwaysOpen && (
+                <Button
+                  onClick={() => setOpen(false)}
+                  className="text-(--mute) hover:text-(--ink) transition-colors"
+                  aria-label="Close"
+                >
+                  <X size={18} />
+                </Button>
+              )}
             </div>
 
             <Form {...form}>

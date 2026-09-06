@@ -1,10 +1,10 @@
 "use client";
 
 import { MessageCircle, Package } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { AgentForm } from "@/components/AgentForm";
 import { AgentMemoryPanel } from "@/components/AgentMemoryPanel";
 import { ConversationList } from "@/components/ConversationList";
 import { IdentityPanel } from "@/components/IdentityPanel";
@@ -114,7 +114,12 @@ export function AgentDetail({ agentId }: { agentId: string }) {
               <MessageCircle className="size-4" />
               Chat
             </Button>
-            <AgentForm editAgent={agent} triggerLabel="Edit" />
+            <Link
+              href={`/team/${agentId}/edit`}
+              className="inline-flex h-7 items-center gap-1 rounded-md border border-(--hairline) bg-(--panel) px-2.5 text-[0.8rem] text-(--body) transition-colors hover:bg-(--panel2)"
+            >
+              Edit
+            </Link>
           </div>
         }
       />

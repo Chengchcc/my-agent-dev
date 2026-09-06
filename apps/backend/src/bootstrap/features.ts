@@ -16,7 +16,13 @@ import type { WorkflowDefinition } from "@chengchenccc/workflow";
 import type { FeatureSet } from "../app.js";
 import { createAgentSvc } from "../features/agent/agent-compose.js";
 import { createAgentIdentityStore } from "../features/agent/agent-identity.js";
-import { AgentBusyError, agentModelRef, agentRoutes } from "../features/agent/index.js";
+import {
+  AgentBusyError,
+  AgentConfigEventBus,
+  agentModelRef,
+  agentRoutes,
+  createAgentConfigMcpServer,
+} from "../features/agent/index.js";
 import { reconcileAgentResources } from "../features/agent/workspace-bridge.js";
 import {
   createAgentContextService,
@@ -369,7 +375,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   });
   let productToolsMcp: Awaited<ReturnType<typeof createProductToolsMcpServer>> | null = null;
   const enabledMcpServers = new Set(
-    (config.enabledMcpServers ?? "product-tools")
+    (config.enabledMcpServers ?? "product-tools,agent")
       .split(",")
       .map((x) => x.trim())
       .filter(Boolean),
@@ -398,6 +404,24 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       definitionEvents: workflowDefinitionEvents,
     });
     console.log(`[bootstrap] workflow MCP listening at ${workflowMcp.url}`);
+  }
+
+  // Agent-config MCP server (per-server control via ENABLED_MCP_SERVERS):
+  // lets the chat agent read/write an agent's config through MCP tools.
+  // Injected into the workspace .mcp.json below only when enabled. Mirrors
+  // the workflow server: agent_write emits a "changed" SSE event and the
+  // edit page adopts it as an unsaved edit.
+  const agentConfigEvents = new AgentConfigEventBus();
+  let agentConfigMcp: Awaited<ReturnType<typeof createAgentConfigMcpServer>> | null = null;
+  if (enabledMcpServers.has("agent")) {
+    agentConfigMcp = await createAgentConfigMcpServer({
+      readConfig: async (agentId) => {
+        const row = await agentSvc.getById(agentId);
+        return row?.config ?? null;
+      },
+      configEvents: agentConfigEvents,
+    });
+    console.log(`[bootstrap] agent-config MCP listening at ${agentConfigMcp.url}`);
   }
 
   // The execution service exists unconditionally: the Oma is a
@@ -788,6 +812,17 @@ export async function installFeatures(services: BackendServices): Promise<Instal
                 },
               ]
             : []),
+          // The agent-config server: lets the chat agent read/write an
+          // agent's config, so the edit page's chat can propose changes.
+          ...(agentConfigMcp
+            ? [
+                {
+                  name: "agent-config",
+                  transport: "sse" as const,
+                  url: agentConfigMcp.url,
+                },
+              ]
+            : []),
           // The knowledge recall server (ADR 0022): merged only when the
           // agent has ready packs (stdio, scoped to its knowledge dir).
           ...(assignedKnowledge.length > 0
@@ -955,6 +990,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       (id: string) => larkBotRegistry.statusOf(id),
       getSetupManager,
       (id: string) => projectSvc.exists(id),
+      agentConfigEvents,
     ),
     conversations: conversationRoutes(conv.convSvc, ulid, (id: string) => projectSvc.exists(id)),
     ops: opsRoutes(opsSvc),

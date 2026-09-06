@@ -160,6 +160,26 @@ export const workflowDefinitionEvents = {
   changed: workflowDefinitionEvent,
 } as const satisfies SSEEventMap;
 
+/** Agent-config change notification (mirrors workflowDefinitionEvent). Emitted
+ *  by HTTP PATCH save or the agent-config MCP agent_write tool. The agent edit
+ *  page subscribes and adopts the proposed config as an unsaved edit — no idle
+ *  polling. */
+export const agentConfigEvent = z.object({
+  event: z.literal("changed"),
+  agentId: z.string(),
+  ts: z.number(),
+  data: z.object({
+    trigger: z.enum(["save", "mcp"]),
+    // For trigger="mcp" the proposed config rides the event — the edit page
+    // adopts it as an unsaved edit without any file write on the backend.
+    config: z.unknown().optional(),
+  }),
+});
+
+export const agentConfigEvents = {
+  changed: agentConfigEvent,
+} as const satisfies SSEEventMap;
+
 export const sseEndpoints = {
   conversationEvents: {
     path: (p: { id: string }) => `/conversations/${p.id}/events`,
