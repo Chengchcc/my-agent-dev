@@ -54,6 +54,19 @@ function defaultDraft(id: string) {
   };
 }
 
+/** Kebab-case id from a display name. The workflow id is written to
+ *  workflows/<id>.workflow.json and appears in the editor title, the chat
+ *  <workflow-context> the agent reads, and the run URLs — so it must be a
+ *  readable slug, not a random token. */
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+}
+
 export function WorkflowList({ definitions }: { definitions: Row[] }) {
   const router = useRouter();
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -64,6 +77,7 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
   } | null>(null);
   const [runVals, setRunVals] = useState<Record<string, string>>({});
   const [running, setRunning] = useState(false);
+  const [newName, setNewName] = useState("");
 
   const cronCount = definitions.filter((d) => (d.triggers ?? []).length > 0).length;
   const dayAgo = Date.now() - 86_400_000;
@@ -76,8 +90,18 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
   ).length;
 
   async function create(templateId?: string) {
-    const id = `wf-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    const name = newName.trim();
+    const id = slugify(name);
+    if (!id) {
+      toast.error("Give the workflow a name first.");
+      return;
+    }
+    if (definitions.some((d) => d.workflowId === id)) {
+      toast.error(`A workflow named "${name}" already exists.`);
+      return;
+    }
     let def: Record<string, unknown> = defaultDraft(id) as Record<string, unknown>;
+    def = { ...def, id, meta: { ...(def.meta as Record<string, unknown>), name } };
     if (templateId) {
       try {
         const t = await api.getWorkflowDefinition(templateId);
@@ -88,7 +112,7 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
             triggers: [],
             meta: {
               ...((t.definition as { meta?: Record<string, unknown> }).meta ?? {}),
-              name: `Copy of ${templateId}`,
+              name,
               status: "draft",
             },
           };
@@ -97,8 +121,13 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
         /* template missing — fall back to blank draft */
       }
     }
-    await api.saveWorkflowDefinition(id, def);
-    router.push(`/workflows/${id}`);
+    try {
+      await api.saveWorkflowDefinition(id, def);
+      toast.success(`Created "${name}"`);
+      router.push(`/workflows/${id}`);
+    } catch (err) {
+      toast.error(`Create failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
   async function openRun(id: string) {
     setRunId(id);
@@ -249,43 +278,78 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
           </div>
         )}
       </PageBody>
-      <Dialog open={newOpen} onOpenChange={setNewOpen}>
+      <Dialog
+        open={newOpen}
+        onOpenChange={(o) => {
+          setNewOpen(o);
+          if (!o) setNewName("");
+        }}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="text-sm font-semibold">New Workflow</DialogTitle>
           </DialogHeader>
-          <div className="space-y-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full justify-start"
-              onClick={() => void create()}
-            >
-              <div className="font-medium">Blank canvas</div>
-              <div className="text-[10px] text-(--mute)">start → end, build from scratch</div>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full justify-start"
-              onClick={() => void create("nighttime-report")}
-            >
-              <div className="font-medium">Nightly code quality report</div>
-              <div className="text-[10px] text-(--mute)">
-                Agent scans repo → report → human confirmation
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label htmlFor="new-wf-name" className="text-xs text-(--mute)">
+                Name
+              </Label>
+              <Input
+                id="new-wf-name"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.preventDefault();
+                }}
+                placeholder="e.g. Release verification flow"
+                autoFocus
+                className="h-9"
+              />
+              {!slugify(newName) && newName.trim().length > 0 && (
+                <p className="text-[10px] text-(--err)">
+                  Name needs at least one letter or number.
+                </p>
+              )}
+              {slugify(newName) && (
+                <p className="font-mono text-[10px] text-(--faint)">id: {slugify(newName)}</p>
+              )}
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-(--mute)">Start from</Label>
+              <div className="space-y-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start"
+                  onClick={() => void create()}
+                >
+                  <div className="font-medium">Blank canvas</div>
+                  <div className="text-[10px] text-(--mute)">start → end, build from scratch</div>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start"
+                  onClick={() => void create("nighttime-report")}
+                >
+                  <div className="font-medium">Nightly code quality report</div>
+                  <div className="text-[10px] text-(--mute)">
+                    Agent scans repo → report → human confirmation
+                  </div>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start"
+                  onClick={() => void create("self-heal")}
+                >
+                  <div className="font-medium">Issue self-heal</div>
+                  <div className="text-[10px] text-(--mute)">
+                    Detect → auto-fix → human confirm → fork exit
+                  </div>
+                </Button>
               </div>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full justify-start"
-              onClick={() => void create("self-heal")}
-            >
-              <div className="font-medium">Issue self-heal</div>
-              <div className="text-[10px] text-(--mute)">
-                Detect → auto-fix → human confirm → fork exit
-              </div>
-            </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
