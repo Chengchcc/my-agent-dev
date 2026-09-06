@@ -26,6 +26,7 @@ export default async function AgenticWorkflowListPage() {
         client.api["workflow-executions"].get({ query: { workflowId: d.workflowId } }),
       ).catch(() => ({
         executions: [] as Array<{
+          executionId: string;
           status: string;
           createdAt: number;
           terminalAt?: number;
@@ -35,7 +36,13 @@ export default async function AgenticWorkflowListPage() {
       return {
         ...d,
         lastExecution: execs.executions?.[0] as
-          | { status: string; createdAt: number; terminalAt?: number; error?: string }
+          | {
+              executionId: string;
+              status: string;
+              createdAt: number;
+              terminalAt?: number;
+              error?: string;
+            }
           | undefined,
       };
     }),

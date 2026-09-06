@@ -32,6 +32,7 @@ type Row = {
   updatedBy?: string;
   updatedAt?: number;
   lastExecution?: {
+    executionId: string;
     status: string;
     createdAt: number;
     terminalAt?: number;
@@ -230,19 +231,27 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
               </div>
               {d.lastExecution && (
                 <div className="mt-1 flex items-center gap-2 text-[10px] text-(--mute)">
-                  <span
-                    className={`rounded-full px-1.5 py-0.5 ${
+                  <button
+                    type="button"
+                    onClick={() =>
+                      d.lastExecution?.executionId &&
+                      router.push(
+                        `/workflows/${d.workflowId}/executions/${d.lastExecution.executionId}`,
+                      )
+                    }
+                    className={`rounded-full px-1.5 py-0.5 transition-colors hover:ring-1 hover:ring-(--primary)/40 ${
                       d.lastExecution.status === "success"
                         ? "bg-(--primary)/10 text-(--primary)"
                         : d.lastExecution.status === "failure"
                           ? "bg-(--err)/10 text-(--err)"
                           : "bg-(--panel2) text-(--mute)"
                     }`}
+                    title="Open this execution"
                   >
                     {d.lastExecution.status === "waiting_human"
                       ? "Awaiting confirmation"
                       : d.lastExecution.status}
-                  </span>
+                  </button>
                   <span>{new Date(d.lastExecution.createdAt).toLocaleString("en-US")}</span>
                   {d.lastExecution.terminalAt && d.lastExecution.createdAt && (
                     <span>
