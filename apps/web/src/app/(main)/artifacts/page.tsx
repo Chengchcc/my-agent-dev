@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { InfoBanner } from "@/components/ui/polish";
 import { useArtifacts, useDeleteArtifact, useUploadArtifact } from "@/features/artifacts/hooks";
 import { api } from "@/lib/api";
 
@@ -149,6 +150,12 @@ export default function ArtifactsPage() {
         }
       />
       <PageBody size="wide" className="space-y-4">
+        <InfoBanner
+          id="ib:artifacts-help"
+          title="How this page works"
+          body="Artifacts are files agents produce during runs, addressable by artifacts:// URLs. Upload one here or let an agent write it; preview, copy its URL, or delete it from this registry."
+        />
+
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <KpiTile
             label="Total stored"
