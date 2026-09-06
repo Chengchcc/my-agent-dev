@@ -1,12 +1,12 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { FolderGit2 } from "lucide-react";
+import { FolderGit2, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { AssignToAgentSelect } from "@/components/AssignToAgentSelect";
 import { ProjectDetailSheet } from "@/components/ProjectDetailSheet";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import {
   ResourceCard,
   ResourceCardContent,
@@ -23,17 +23,38 @@ import { ProjectForm } from "./ProjectForm";
 
 export function ProjectList() {
   const [editingProject, setEditingProject] = useState<ProjectRow | null>(null);
-  const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const { data: projectsData, isLoading } = useProjectList();
   const remove = useDeleteProject();
-
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const qc = useQueryClient();
+
   const { data: agentsData } = useAgentList();
 
   const projects = useMemo(() => projectsData?.projects ?? [], [projectsData]);
   const selectedProject = projects.find((p) => p.projectId === selectedId) ?? null;
+
+  const handleDelete = async (project: ProjectRow) => {
+    const ok = await confirm({
+      title: `Delete project "${project.name}"?`,
+      description: "This cannot be undone.",
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (ok) {
+      remove.mutate(project.projectId, {
+        onError: (err) => {
+          const message = err instanceof Error ? err.message : "Unknown error";
+          const is409 = message.includes("409") || message.toLowerCase().includes("still has");
+          toast.error(
+            is409 ? "Cannot delete — project still has issues" : "Failed to delete project",
+            { description: message },
+          );
+        },
+      });
+    }
+  };
 
   if (isLoading) {
     return (
@@ -61,17 +82,8 @@ export function ProjectList() {
     <>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {projects.map((project) => {
-          const usedByAgents = (agentsData ?? [])
-            .filter((a) => a.projects?.includes(project.projectId))
-            .map((a) => a.name);
-          const onAssign = (agentId: string) => {
-            const agent = (agentsData ?? []).find((ag) => ag.id === agentId);
-            const next = [...(agent?.projects ?? []), project.projectId];
-            void api.updateAgent(agentId, { projects: next });
-            void qc.invalidateQueries({ queryKey: agentKeys.lists() });
-          };
           return (
-            <ResourceCard key={project.projectId}>
+            <ResourceCard key={project.projectId} tone={project.repoUrl ? "info" : "warn"}>
               <ResourceCardHeader
                 icon={<FolderGit2 className="size-4 text-(--mute)" />}
                 title={project.name}
@@ -85,14 +97,6 @@ export function ProjectList() {
                   {project.defaultBranch && (
                     <ResourceTag label={project.defaultBranch} tone="info" />
                   )}
-                  {usedByAgents.length ? (
-                    <ResourceTag
-                      label={`${usedByAgents.length} agent${usedByAgents.length > 1 ? "s" : ""}`}
-                      tone="ok"
-                    />
-                  ) : (
-                    <ResourceTag label="not attached" tone="warn" />
-                  )}
                 </div>
                 <p className="text-xs text-(--mute)">
                   Created{" "}
@@ -103,64 +107,18 @@ export function ProjectList() {
                 </p>
               </ResourceCardContent>
               <ResourceCardFooter
+                meta={`● ${project.repoUrl ? "repository" : "no repo"}`}
                 action={{ label: "View", onClick: () => setSelectedId(project.projectId) }}
               >
-                <AssignToAgentSelect
-                  agents={agentsData ?? []}
-                  assigned={(agentId) =>
-                    Boolean(
-                      (agentsData ?? [])
-                        .find((ag) => ag.id === agentId)
-                        ?.projects?.includes(project.projectId),
-                    )
-                  }
-                  onAssign={onAssign}
-                />
-                <Button variant="ghost" size="sm" onClick={() => setEditingProject(project)}>
-                  Edit
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-(--err) hover:bg-(--err)/10"
+                  aria-label={`Delete ${project.name}`}
+                  onClick={() => void handleDelete(project)}
+                >
+                  <Trash2 className="size-3" />
                 </Button>
-                {confirmingId === project.projectId ? (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => {
-                        remove.mutate(project.projectId, {
-                          onSuccess: () => {
-                            toast.success("Project deleted");
-                            setConfirmingId(null);
-                          },
-                          onError: (err) => {
-                            const message = err instanceof Error ? err.message : "Unknown error";
-                            const is409 =
-                              message.includes("409") ||
-                              message.toLowerCase().includes("still has");
-                            toast.error(
-                              is409
-                                ? "Cannot delete — project still has issues"
-                                : "Failed to delete project",
-                              { description: message },
-                            );
-                          },
-                        });
-                      }}
-                      disabled={remove.isPending}
-                    >
-                      Confirm
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => setConfirmingId(null)}>
-                      Cancel
-                    </Button>
-                  </>
-                ) : (
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => setConfirmingId(project.projectId)}
-                  >
-                    Delete
-                  </Button>
-                )}
               </ResourceCardFooter>
             </ResourceCard>
           );
@@ -181,9 +139,23 @@ export function ProjectList() {
           project={selectedProject}
           agents={agentsData ?? []}
           onEdit={() => setEditingProject(selectedProject)}
+          onAssign={(agentId) => {
+            const agent = (agentsData ?? []).find((ag) => ag.id === agentId);
+            const next = [...(agent?.projects ?? []), selectedProject.projectId];
+            void api.updateAgent(agentId, { projects: next });
+            void qc.invalidateQueries({ queryKey: agentKeys.lists() });
+          }}
+          onRemove={(agentId) => {
+            const agent = (agentsData ?? []).find((ag) => ag.id === agentId);
+            const next = (agent?.projects ?? []).filter((id) => id !== selectedProject.projectId);
+            void api.updateAgent(agentId, { projects: next });
+            void qc.invalidateQueries({ queryKey: agentKeys.lists() });
+          }}
           onClose={() => setSelectedId(null)}
         />
       )}
+
+      {confirmDialog}
     </>
   );
 }

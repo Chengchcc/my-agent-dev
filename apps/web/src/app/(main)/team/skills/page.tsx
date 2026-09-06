@@ -570,7 +570,19 @@ export default function SkillPacksPage() {
                       <ResourceCardFooter
                         meta={`● ${statusLabel(p.status)}${p.error ? " · error" : ""}`}
                         action={{ label: "Inspect", onClick: () => setSelectedId(p.id) }}
-                      />
+                      >
+                        {p.sourceKind !== "builtin" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-(--err) hover:bg-(--err)/10"
+                            aria-label={`Delete ${p.name}`}
+                            onClick={() => void handleDelete(p)}
+                          >
+                            <Trash2 className="size-3" />
+                          </Button>
+                        )}
+                      </ResourceCardFooter>
                     </ResourceCard>
                   );
                 })}

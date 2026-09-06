@@ -4,6 +4,7 @@ import { FolderGit2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { WorktreeCard } from "@/app/(main)/team/projects/_components/worktree-card";
+import { PackAgentsTab } from "@/components/pack-agents-tab";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ResourceDetailSheet } from "@/components/ui/resource-detail-sheet";
@@ -15,18 +16,20 @@ export function ProjectDetailSheet({
   project,
   agents,
   onEdit,
+  onAssign,
+  onRemove,
   onClose,
 }: {
   project: ProjectRow;
   agents: AgentRow[];
   onEdit: () => void;
+  onAssign: (agentId: string) => void;
+  onRemove: (agentId: string) => void;
   onClose: () => void;
 }) {
-  const [tab, setTab] = useState<"overview" | "worktrees">("overview");
+  const [tab, setTab] = useState<"overview" | "worktrees" | "agents">("overview");
   const { data: wtRes, isLoading, error: wtErr } = useProjectWorktrees(project.projectId);
-  const usedByAgents = agents
-    .filter((a) => a.projects?.includes(project.projectId))
-    .map((a) => a.name);
+  const usedBy = agents.filter((a) => a.projects?.includes(project.projectId));
 
   const worktrees = wtRes?.worktrees ?? [];
 
@@ -40,17 +43,18 @@ export function ProjectDetailSheet({
       tabs={[
         { key: "overview", label: "Overview" },
         { key: "worktrees", label: "Worktrees" },
+        { key: "agents", label: "Agents" },
       ]}
       tab={tab}
-      onTabChange={(key) => setTab(key as "overview" | "worktrees")}
+      onTabChange={(key) => setTab(key as "overview" | "worktrees" | "agents")}
       breadcrumb={[
         { label: project.name },
-        { label: tab === "worktrees" ? "Worktrees" : "Overview" },
+        { label: tab === "worktrees" ? "Worktrees" : tab === "agents" ? "Agents" : "Overview" },
       ]}
       footer={
         <>
           <Text as="p" className="mr-auto text-xs text-(--mute)">
-            {usedByAgents.length} attached agent{usedByAgents.length > 1 ? "s" : ""}
+            {usedBy.length} attached agent{usedBy.length > 1 ? "s" : ""}
           </Text>
           <Button variant="outline" size="sm" onClick={onEdit}>
             Edit
@@ -73,9 +77,21 @@ export function ProjectDetailSheet({
             <DetailRow label="Repository" value={project.repoUrl ?? "—"} />
             <DetailRow label="Default branch" value={project.defaultBranch ?? "—"} />
             <DetailRow label="Created" value={new Date(project.createdAt).toLocaleDateString()} />
-            <DetailRow label="Attached" value={`${usedByAgents.length} agents`} />
+            <DetailRow label="Attached" value={`${usedBy.length} agents`} />
           </dl>
         </div>
+      )}
+
+      {tab === "agents" && (
+        <PackAgentsTab
+          agents={agents}
+          usedBy={usedBy}
+          isAssigned={(agentId) =>
+            Boolean(agents.find((a) => a.id === agentId)?.projects?.includes(project.projectId))
+          }
+          onAssign={onAssign}
+          onRemove={onRemove}
+        />
       )}
 
       {tab === "worktrees" && (

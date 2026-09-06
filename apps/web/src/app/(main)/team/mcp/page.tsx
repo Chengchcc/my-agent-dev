@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CircleCheck, Plug, RefreshCw, Server, Wrench } from "lucide-react";
+import { CircleCheck, Plug, RefreshCw, Server, Trash2, Wrench } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { PackAgentsTab } from "@/components/pack-agents-tab";
@@ -723,7 +723,25 @@ export default function McpCatalogPage() {
                     <ResourceCardFooter
                       meta={`● ${statusLabel(status)}${s.runtimeError ? " · error" : ""}`}
                       action={{ label: "Inspect", onClick: () => void beginEdit(s.serverId) }}
-                    />
+                    >
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={test.isPending}
+                        onClick={() => void test.mutate(s.serverId)}
+                      >
+                        {test.isPending ? "Testing…" : "Test"}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-(--err) hover:bg-(--err)/10"
+                        aria-label={`Delete ${s.name}`}
+                        onClick={() => setConfirmServerId(s.serverId)}
+                      >
+                        <Trash2 className="size-3" />
+                      </Button>
+                    </ResourceCardFooter>
                   </ResourceCard>
                 );
               })}

@@ -8,6 +8,7 @@ import {
   CircleCheck,
   Download,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { PackFileSearch } from "@/components/PackFileSearch";
@@ -464,7 +465,17 @@ export default function KnowledgePackPage() {
                     <ResourceCardFooter
                       meta={`● ${statusLabel(p.status)}${p.error ? " · error" : ""}`}
                       action={{ label: "Inspect", onClick: () => setSelectedId(p.id) }}
-                    />
+                    >
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-(--err) hover:bg-(--err)/10"
+                        aria-label={`Delete ${p.name}`}
+                        onClick={() => setConfirmPackId(p.id)}
+                      >
+                        <Trash2 className="size-3" />
+                      </Button>
+                    </ResourceCardFooter>
                   </ResourceCard>
                 );
               })}
