@@ -5,6 +5,8 @@ import { useEffect, useRef } from "react";
 import type { AgentRow } from "@/lib/api";
 import { typedSource } from "@/lib/typed-source";
 
+// Must stay in sync with AgentRow["permissionMode"] (backend permission_mode).
+const PERMISSION_MODES = ["ask", "auto", "deny"] as const;
 /** Map an agent.yml-shaped config (what the agent-config MCP agent_write
  *  proposes / the backend PATCH emits) to the AgentRow shape that AgentForm's
  *  form.reset() consumes. The proposed config doesn't carry workspacePath or
@@ -34,8 +36,8 @@ export function agentConfigToRow(config: unknown, base: AgentRow): AgentRow {
       rc.reasoning_effort && rc.reasoning_effort !== ""
         ? (rc.reasoning_effort as "none" | "low" | "high" | "max")
         : null,
-    permissionMode: (rc.permission_mode as AgentRow["permissionMode"]) ?? base.permissionMode,
-    maxSteps: maxSteps as number | null,
+    permissionMode: PERMISSION_MODES.find((m) => m === rc.permission_mode) ?? base.permissionMode,
+    maxSteps,
     mcpServers,
     knowledgePacks: Array.isArray(rc.knowledge_packs) ? (rc.knowledge_packs as string[]) : [],
     projects: Array.isArray(rc.projects) ? (rc.projects as string[]) : [],

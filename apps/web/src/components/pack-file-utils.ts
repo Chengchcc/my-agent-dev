@@ -1,6 +1,8 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { type UseQueryOptions, type UseQueryResult, useQuery } from "@tanstack/react-query";
+import { knowledgePackFilesQuery } from "@/features/knowledge/queries";
+import { skillPackFilesQuery } from "@/features/skill-packs/queries";
 import { api } from "@/lib/api";
 
 /** A pack file/dir node, shared by skill + knowledge pack browsers. */
@@ -10,19 +12,22 @@ export type PackFileNode =
 
 export type PackKind = "skill" | "knowledge";
 
-const baseKey = (kind: PackKind) => (kind === "knowledge" ? ["knowledge-packs"] : ["skill-packs"]);
+/** One hook for both pack kinds — the same read-only file surface is reused
+ *  by the skill-pack and knowledge-pack drawers. */
+type PackFilesQueryOptions = UseQueryOptions<PackFileNode, Error, PackFileNode, readonly unknown[]>;
 
 /** One hook for both pack kinds — the same read-only file surface is reused
  *  by the skill-pack and knowledge-pack drawers. */
-export function usePackFiles(kind: PackKind, id: string, path?: string) {
-  return useQuery({
-    queryKey: [...baseKey(kind), id, "files", path ?? ""],
-    queryFn: () =>
-      (kind === "knowledge"
-        ? api.getKnowledgePackFiles(id, path)
-        : api.getSkillPackFiles(id, path)) as Promise<PackFileNode>,
-    enabled: !!id,
-  });
+export function usePackFiles(
+  kind: PackKind,
+  id: string,
+  path?: string,
+): UseQueryResult<PackFileNode, Error> {
+  return useQuery(
+    (kind === "knowledge"
+      ? knowledgePackFilesQuery(id, path)
+      : skillPackFilesQuery(id, path)) as PackFilesQueryOptions,
+  );
 }
 
 export function searchPackFiles(

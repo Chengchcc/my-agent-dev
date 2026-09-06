@@ -247,6 +247,7 @@
     },
     "packages/source-fetch": {
       "name": "@chengchenccc/source-fetch",
+      "version": "0.1.0",
     },
     "packages/test-helpers": {
       "name": "@chengchenccc/test-helpers",
@@ -259,11 +260,9 @@
       "name": "@chengchenccc/tui",
       "version": "0.1.0",
       "dependencies": {
+        "@xterm/headless": "5.5.0",
         "get-east-asian-width": "^1.6.0",
         "marked": "^18.0.5",
-      },
-      "devDependencies": {
-        "@xterm/headless": "5.5.0",
       },
     },
     "packages/workflow": {
