@@ -2,11 +2,13 @@
 
 import { AgentForm } from "@/components/AgentForm";
 import { Page, PageHeader } from "@/components/page";
+import { ChatPanel } from "@/components/workflow/ChatPanel";
 
-/** Create-agent page: a persistent create form on the left and the chat
- *  guide on the right. Mirrors the workflow editor — this is the entrypoint
- *  for `+ New Agent`. Once the agent is created the form navigates to
- *  /team/<id>/edit where the chat can propose config changes. */
+/** Create-agent page: a persistent create form on the left and a chat on the
+ *  right. Before the agent exists, the chat is a "config assistant" bound to
+ *  the default agent (agent:chat:new) — you can discuss how to shape the new
+ *  agent while filling the form. Submitting the form navigates to
+ *  /team/<id>/edit, where the chat targets the real agent config. */
 export default function NewAgentEditPage() {
   return (
     <Page>
@@ -23,27 +25,27 @@ export default function NewAgentEditPage() {
         <div className="min-h-0 min-w-0 flex-1 border-(--hairline) p-4 md:border-r">
           <AgentForm alwaysOpen />
         </div>
-        {/* Right: chat guide (no agent yet — this becomes live on edit) */}
+        {/* Right: chat (create-state assistant; becomes the agent config chat on edit) */}
         <div className="flex w-[320px] shrink-0 flex-col border-l border-(--hairline)">
-          <div className="flex h-full flex-col px-3 pt-3">
-            <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
-              <span className="text-(--primary)">◆</span> Chat
-              <span className="text-[10px] font-normal text-(--mute)">
-                (enabled after you create the agent)
-              </span>
-            </div>
-            <div className="rounded-lg border border-dashed border-(--hairline) bg-(--canvas-soft)/40 p-3 text-xs text-(--mute)">
-              <p className="mb-1.5">
-                Fill in the form on the left and press{" "}
-                <span className="font-medium text-(--ink)">Create Agent</span>. You'll land on the
-                edit view where this chat can propose config changes — the agent applies them via
-                MCP tools and you review &amp; save.
-              </p>
-              <p className="font-mono text-[11px] text-(--faint)">
-                e.g. "switch the model to deepseek/deepseek-v4-flash"
-              </p>
-            </div>
-          </div>
+          <ChatPanel
+            conversationId="agent:chat:new"
+            title="Chat"
+            contextBlock={[
+              "<agent-context>",
+              "<agentId>new</agentId>",
+              "<name>New Agent</name>",
+              "<state>creating</state>",
+              "</agent-context>",
+            ]
+              .filter(Boolean)
+              .join("\n")}
+            placeholder="Discuss how to configure the new agent…"
+            suggestions={[
+              "Pick a model for code review work",
+              "Should this agent allow auto-approve?",
+              "Which knowledge pack should it use?",
+            ]}
+          />
         </div>
       </div>
     </Page>
