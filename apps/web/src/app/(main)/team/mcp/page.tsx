@@ -722,7 +722,7 @@ export default function McpCatalogPage() {
                     </ResourceCardContent>
                     <ResourceCardFooter
                       meta={`● ${statusLabel(status)}${s.runtimeError ? " · error" : ""}`}
-                      action={{ label: "Inspect", onClick: () => void beginEdit(s.serverId) }}
+                      action={{ label: "Inspect", onClick: () => setSelectedId(s.serverId) }}
                     >
                       <Button
                         variant="outline"
