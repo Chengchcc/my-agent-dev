@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { AssignToAgentSelect } from "@/components/AssignToAgentSelect";
 import { CapabilityListPage } from "@/components/capability-list-page";
 import { PackAgentsTab } from "@/components/pack-agents-tab";
-import { KpiTile, MonoLabel, StatusPill, type StatusTone } from "@/components/patterns";
+import { KpiTile, MonoLabel, StatusPill } from "@/components/patterns";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,6 +20,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SubTabs } from "@/components/ui/polish";
+import { ResourceCard, type ResourceTone } from "@/components/ui/resource-card";
 import { ResourceDetailSheet } from "@/components/ui/resource-detail-sheet";
 import { Text } from "@/components/ui/text";
 import { Textarea } from "@/components/ui/textarea";
@@ -674,89 +675,61 @@ export default function McpCatalogPage() {
                 .filter((a) => a.mcpServers?.some((m) => m.serverId === s.serverId && m.enabled))
                 .map((a) => a.name);
               const status = displayStatus(s);
-              const tone: StatusTone =
-                status === "ok" ? "success" : status === "err" ? "error" : "idle";
+              const resourceTone: ResourceTone =
+                status === "ok" ? "ok" : status === "err" ? "err" : "default";
               const iconTone = s.transport === "sse" ? "var(--accent-violet)" : "var(--primary)";
               const endpoint = s.transport === "sse" ? (s.url ?? "") : (s.command ?? "");
               return (
-                <div
+                <ResourceCard
                   key={s.serverId}
-                  className="group relative flex flex-col justify-between rounded-lg border border-(--hairline) bg-(--panel) p-4 transition-colors hover:bg-(--canvas-soft)"
-                >
-                  <div className="flex flex-col gap-2.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <span
-                          className="flex size-10 shrink-0 items-center justify-center rounded"
-                          style={{
-                            backgroundColor: `color-mix(in srgb, ${iconTone} 10%, transparent)`,
-                            color: iconTone,
-                          }}
-                        >
-                          <Server className="size-5" />
-                        </span>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="truncate font-display text-sm font-semibold text-(--ink-strong)">
-                              {s.name}
-                            </span>
-                            <span
-                              className="shrink-0 rounded bg-(--panel2) px-1.5 py-0.5 font-mono text-[10px] font-medium"
-                              style={{ color: iconTone }}
-                            >
-                              {s.transport}
-                            </span>
-                          </div>
-                          <span className="block truncate font-mono text-[10px] text-(--mute)">
-                            {endpoint}
-                          </span>
-                        </div>
-                      </div>
-                      <StatusPill tone={tone} className="shrink-0">
-                        {statusLabel(status)}
-                      </StatusPill>
-                    </div>
-                    <p className="line-clamp-2 text-xs text-(--mute)">
-                      {s.runtimeError ?? serverMeta(s) ?? "No runtime probe yet."}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <MonoLabel className="text-(--faint)">Exposed tools:</MonoLabel>
-                      <span className="rounded bg-(--canvas-soft) px-1.5 py-0.5 font-mono text-[10px] text-(--ink)">
-                        {s.runtimeToolsCount ?? s.toolsCount ?? 0}
-                      </span>
-                      {s.runtimeCheckedAt && (
-                        <span className="font-mono text-[10px] text-(--faint)">
-                          checked {hhmm(s.runtimeCheckedAt)}
-                        </span>
-                      )}
-                      <MonoLabel className="text-(--faint)">Bound agents:</MonoLabel>
-                      {usedByNames.length > 0 ? (
-                        usedByNames.slice(0, 3).map((name) => (
-                          <span
-                            key={name}
-                            className="rounded bg-(--canvas-soft) px-1.5 py-0.5 font-mono text-[10px] text-(--accent-violet)"
-                          >
-                            {name}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="font-mono text-[10px] text-(--warn)">not assigned</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-(--hairline) pt-2.5">
-                    <button
-                      type="button"
-                      className="font-mono text-[10px] text-(--faint) hover:text-(--primary)"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void navigator.clipboard.writeText(s.serverId);
+                  icon={
+                    <span
+                      className="flex size-full items-center justify-center rounded"
+                      style={{
+                        backgroundColor: `color-mix(in srgb, ${iconTone} 10%, transparent)`,
+                        color: iconTone,
                       }}
-                      title="Copy server id"
                     >
-                      {s.serverId.slice(0, 10)}
-                    </button>
-                    <div className="flex items-center gap-1.5">
+                      <Server className="size-5" />
+                    </span>
+                  }
+                  title={s.name}
+                  idChip={endpoint || undefined}
+                  badge={{ label: statusLabel(status), tone: resourceTone }}
+                  tone={resourceTone}
+                  description={s.runtimeError ?? serverMeta(s) ?? "No runtime probe yet."}
+                  tags={[
+                    { label: s.transport, tone: s.transport === "sse" ? "info" : "default" },
+                    { label: `${s.runtimeToolsCount ?? s.toolsCount ?? 0} tools` },
+                    ...(s.runtimeCheckedAt
+                      ? [{ label: `checked ${hhmm(s.runtimeCheckedAt)}`, tone: "default" as const }]
+                      : []),
+                  ]}
+                  lint={
+                    usedByNames.length > 0
+                      ? [
+                          {
+                            label: `bound: ${usedByNames.slice(0, 3).join(", ")}${
+                              usedByNames.length > 3 ? "…" : ""
+                            }`,
+                            tone: "ok" as const,
+                          },
+                        ]
+                      : [{ label: "not assigned", tone: "warn" as const }]
+                  }
+                  footer={
+                    <>
+                      <button
+                        type="button"
+                        className="font-mono text-[10px] text-(--faint) hover:text-(--primary)"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void navigator.clipboard.writeText(s.serverId);
+                        }}
+                        title="Copy server id"
+                      >
+                        {s.serverId.slice(0, 10)}
+                      </button>
                       <AssignToAgentSelect
                         agents={agentsData ?? []}
                         assigned={(agentId) =>
@@ -802,9 +775,9 @@ export default function McpCatalogPage() {
                       >
                         <Trash2 className="size-3" />
                       </Button>
-                    </div>
-                  </div>
-                </div>
+                    </>
+                  }
+                />
               );
             })}
             {filtered.length === 0 && (

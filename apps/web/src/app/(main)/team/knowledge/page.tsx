@@ -16,7 +16,7 @@ import { CapabilityListPage } from "@/components/capability-list-page";
 import { PackFileSearch } from "@/components/PackFileSearch";
 import { PackFileViewer } from "@/components/PackFileViewer";
 import { PackAgentsTab } from "@/components/pack-agents-tab";
-import { KpiTile, MonoLabel, StatusPill, type StatusTone } from "@/components/patterns";
+import { KpiTile, StatusPill } from "@/components/patterns";
 import { FileTree } from "@/components/SkillPackManager";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,6 +30,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SectionKicker, statusBadge } from "@/components/ui/polish";
+import { ResourceCard, type ResourceTone } from "@/components/ui/resource-card";
 import { ResourceDetailSheet } from "@/components/ui/resource-detail-sheet";
 import { Text } from "@/components/ui/text";
 import { Textarea } from "@/components/ui/textarea";
@@ -46,11 +47,10 @@ function fmtBytes(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)}M`;
 }
 
-function packTone(status: string): StatusTone {
-  if (status === "ready") return "success";
-  if (status === "failed") return "error";
-  if (status === "installing" || status === "syncing") return "running";
-  return "idle";
+function packResourceTone(status: string): ResourceTone {
+  if (status === "ready") return "ok";
+  if (status === "failed") return "err";
+  return "default";
 }
 
 function statusLabel(status: string): string {
@@ -430,75 +430,51 @@ export default function KnowledgePackPage() {
               const iconTone =
                 p.sourceKind === "builtin" ? "var(--primary)" : "var(--accent-violet)";
               return (
-                <div
+                <ResourceCard
                   key={p.id}
-                  className="group relative flex flex-col justify-between rounded-lg border border-(--hairline) bg-(--panel) p-4 transition-colors hover:bg-(--canvas-soft)"
-                >
-                  <div className="flex flex-col gap-2.5">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <span
-                          className="flex size-10 shrink-0 items-center justify-center rounded"
-                          style={{
-                            backgroundColor: `color-mix(in srgb, ${iconTone} 10%, transparent)`,
-                            color: iconTone,
-                          }}
-                        >
-                          <BookOpen className="size-5" />
-                        </span>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="truncate font-display text-sm font-semibold text-(--ink-strong)">
-                              {p.name}
-                            </span>
-                            {p.sourceRev && (
-                              <span className="shrink-0 font-mono text-[10px] text-(--faint)">
-                                @{p.sourceRev.slice(0, 8)}
-                              </span>
-                            )}
-                          </div>
-                          <MonoLabel className="text-(--ok)">
-                            {p.sourceKind} · {statusLabel(p.status)}
-                          </MonoLabel>
-                        </div>
-                      </div>
-                      <StatusPill tone={packTone(p.status)} className="shrink-0">
-                        {statusLabel(p.status)}
-                      </StatusPill>
-                    </div>
-                    <p className="line-clamp-2 text-xs text-(--mute)">
-                      {(p.status === "failed" && p.error) || p.description || "No description."}
-                    </p>
-                    {(() => {
-                      const st = allStats[p.id];
-                      if (!st) return null;
-                      return (
-                        <div className="flex items-center gap-1.5 font-mono text-[10px] text-(--faint)">
-                          {st.files} files · {Math.round(st.totalBytes / 1024)}KB indexed
-                        </div>
-                      );
-                    })()}
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <MonoLabel className="text-(--faint)">Bound agents:</MonoLabel>
-                      {usedByNames.length > 0 ? (
-                        usedByNames.slice(0, 3).map((name) => (
-                          <span
-                            key={name}
-                            className="rounded bg-(--canvas-soft) px-1.5 py-0.5 font-mono text-[10px] text-(--accent-violet)"
-                          >
-                            {name}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="font-mono text-[10px] text-(--warn)">not assigned</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-(--hairline) pt-2.5">
-                    <span className="font-mono text-[10px] text-(--faint)">
-                      {formatDate(p.createdAt)}
+                  icon={
+                    <span
+                      className="flex size-full items-center justify-center rounded"
+                      style={{
+                        backgroundColor: `color-mix(in srgb, ${iconTone} 10%, transparent)`,
+                        color: iconTone,
+                      }}
+                    >
+                      <BookOpen className="size-5" />
                     </span>
-                    <div className="flex items-center gap-1.5">
+                  }
+                  title={p.name}
+                  idChip={p.sourceRev ? `@${p.sourceRev.slice(0, 8)}` : undefined}
+                  badge={{ label: statusLabel(p.status), tone: packResourceTone(p.status) }}
+                  tone={packResourceTone(p.status)}
+                  description={
+                    (p.status === "failed" && p.error) || p.description || "No description."
+                  }
+                  tags={(() => {
+                    const st = allStats[p.id];
+                    return [
+                      {
+                        label: `${p.sourceKind} · ${statusLabel(p.status)}`,
+                        tone: "info" as const,
+                      },
+                      ...(st ? [{ label: `${st.files} files`, tone: "default" as const }] : []),
+                    ];
+                  })()}
+                  lint={
+                    usedByNames.length > 0
+                      ? [
+                          {
+                            label: `bound: ${usedByNames.slice(0, 3).join(", ")}${
+                              usedByNames.length > 3 ? "…" : ""
+                            }`,
+                            tone: "ok" as const,
+                          },
+                        ]
+                      : [{ label: "not assigned", tone: "warn" as const }]
+                  }
+                  meta={formatDate(p.createdAt)}
+                  footer={
+                    <>
                       <AssignToAgentSelect
                         agents={agentsData ?? []}
                         assigned={isAssigned}
@@ -516,9 +492,9 @@ export default function KnowledgePackPage() {
                       >
                         <Trash2 className="size-3" />
                       </Button>
-                    </div>
-                  </div>
-                </div>
+                    </>
+                  }
+                />
               );
             })}
             {filtered.length === 0 && (
