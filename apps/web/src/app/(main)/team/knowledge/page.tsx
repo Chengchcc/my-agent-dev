@@ -133,9 +133,6 @@ function KnowledgeDetailSheet({
       ]}
       footer={
         <>
-          <Text as="p" className="mr-auto text-xs text-(--mute)">
-            Used by {usedBy.length} agent{usedBy.length > 1 ? "s" : ""}
-          </Text>
           <Button
             variant="ghost"
             size="sm"

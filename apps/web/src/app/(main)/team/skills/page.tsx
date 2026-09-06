@@ -118,11 +118,6 @@ function PackDrawer({
       ]}
       footer={
         <>
-          {usedBy.length > 0 && (
-            <Text as="p" className="mr-auto text-xs text-(--mute)">
-              Used by {usedBy.length} agent{usedBy.length > 1 ? "s" : ""}
-            </Text>
-          )}
           {pack.sourceKind === "git" && (
             <Button variant="outline" size="sm" onClick={onSync}>
               Sync from Git
