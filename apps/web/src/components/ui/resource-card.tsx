@@ -41,6 +41,7 @@ export function ResourceCard({
   title,
   idChip,
   badge,
+  tone,
   description,
   tags,
   lint,
@@ -53,6 +54,9 @@ export function ResourceCard({
   title: string;
   idChip?: string;
   badge?: { label: string; tone?: ResourceTone };
+  /** Right-edge accent bar color. Defaults to the badge tone; pass explicitly
+   *  when there's no badge but a status color is wanted (e.g. list cards). */
+  tone?: ResourceTone;
   description?: string;
   tags?: Array<{ label: string; tone?: ResourceTone }>;
   lint?: Array<{ label: string; tone?: ResourceTone }>;
@@ -61,16 +65,25 @@ export function ResourceCard({
   onClick?: () => void;
   className?: string;
 }) {
+  const accent = tone ?? badge?.tone;
   return (
     <Card
       size="sm"
       onClick={onClick}
       className={cn(
-        "h-full",
+        "relative h-full",
+        accent && accent !== "default" && "pr-3",
         onClick && "cursor-pointer transition-colors hover:bg-(--panel2)",
         className,
       )}
     >
+      {accent && accent !== "default" && (
+        <span
+          aria-hidden
+          className="absolute inset-y-0 right-0 w-1"
+          style={{ background: `var(--${accent})` }}
+        />
+      )}
       <CardHeader className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           {icon && (

@@ -5,18 +5,19 @@ import { Download, GitBranch, Package, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AssignToAgentSelect } from "@/components/AssignToAgentSelect";
+import { CapabilityListPage } from "@/components/capability-list-page";
 import { InstallPackForm } from "@/components/InstallPackForm";
 import { PackFileSearch } from "@/components/PackFileSearch";
 import { PackFileViewer } from "@/components/PackFileViewer";
 import { PackAgentsTab } from "@/components/pack-agents-tab";
-import { Page, PageBody, PageHeader } from "@/components/page";
-import { KpiTile, MonoLabel, StatusPill, type StatusTone } from "@/components/patterns";
+import { KpiTile, MonoLabel, StatusPill } from "@/components/patterns";
 import { FileTree, statusLabel } from "@/components/SkillPackManager";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
-import { InfoBanner, ListToolbar, SectionKicker, statusBadge } from "@/components/ui/polish";
+import { SectionKicker, statusBadge } from "@/components/ui/polish";
+import { ResourceCard, type ResourceTone } from "@/components/ui/resource-card";
 import { ResourceDetailSheet } from "@/components/ui/resource-detail-sheet";
 import {
   Select,
@@ -45,13 +46,6 @@ type SkillSummary = { name: string; description: string; dir: string };
 function toDateString(value: number): string {
   const ms = value > 1e12 ? value : value * 1000;
   return new Date(ms).toLocaleDateString();
-}
-
-function statusTone(status: string): StatusTone {
-  if (status === "ready") return "success";
-  if (status === "failed") return "error";
-  if (status === "installing" || status === "syncing") return "running";
-  return "idle";
 }
 
 function PackDrawer({
@@ -370,8 +364,8 @@ export default function SkillPacksPage() {
   }
 
   return (
-    <Page>
-      <PageHeader
+    <>
+      <CapabilityListPage
         breadcrumb="Team / Capabilities / Skills"
         title="Skills"
         description="Managed skills and capability bundles per agent."
@@ -405,16 +399,13 @@ export default function SkillPacksPage() {
             </Button>
           </>
         }
-      />
-      <PageBody>
-        <div className="space-y-6">
-          <InfoBanner
-            id="ib:skills-help"
-            title="How this page works"
-            body="Install a pack from git or a zip upload, then assign it per agent from the agent's Skills tab. Click a card to browse its skills and files."
-          />
-
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        banner={{
+          id: "ib:skills-help",
+          title: "How this page works",
+          body: "Install a pack from git or a zip upload, then assign it per agent from the agent's Skills tab. Click a card to browse its skills and files.",
+        }}
+        kpis={
+          <>
             <KpiTile label="Packs" value={list.length} icon={Package} detail="installed" />
             <KpiTile
               label="Ready"
@@ -438,221 +429,197 @@ export default function SkillPacksPage() {
               bar={errors > 0 ? 100 : 0}
               barTone="err"
             />
-          </div>
+          </>
+        }
+        filters={
+          <>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {["all", ...sourceKinds].map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  onClick={() => setSourceFilter(kind)}
+                  className={`rounded px-2 py-0.5 font-mono text-[11px] transition-colors ${
+                    sourceFilter === kind
+                      ? "bg-(--panel2) font-medium text-(--primary)"
+                      : "bg-(--canvas-soft) text-(--mute) hover:text-(--ink)"
+                  }`}
+                >
+                  {kind === "all"
+                    ? `All sources (${list.length})`
+                    : `${kind} (${list.filter((x) => x.sourceKind === kind).length})`}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {statusTabs.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setStatusFilter(t.key)}
+                  className={`rounded px-2 py-0.5 font-mono text-[11px] transition-colors ${
+                    statusFilter === t.key
+                      ? "bg-(--panel2) font-medium text-(--primary)"
+                      : "bg-(--canvas-soft) text-(--mute) hover:text-(--ink)"
+                  }`}
+                >
+                  {t.label} ({t.count})
+                </button>
+              ))}
+            </div>
+          </>
+        }
+        search={{
+          value: query,
+          onChange: setQuery,
+          placeholder: "Search skill packs by name or description",
+        }}
+      >
+        {validateResult && (
+          <section className="space-y-2 rounded-lg border border-(--hairline) bg-(--panel) p-4">
+            <div className="flex items-center justify-between">
+              <MonoLabel>Manifest validation</MonoLabel>
+              <StatusPill tone={validateResult.every((r) => r.ok) ? "success" : "error"}>
+                {validateResult.filter((r) => r.ok).length}/{validateResult.length} ok
+              </StatusPill>
+            </div>
+            <div className="divide-y divide-(--hairline) text-xs">
+              {validateResult.map((r) => (
+                <div key={r.id} className="flex items-center justify-between gap-2 py-1.5">
+                  <span className="truncate font-mono text-(--ink)">{r.name}</span>
+                  <span
+                    className={`font-mono text-[10px] ${r.ok ? "text-(--ok)" : "text-(--err)"}`}
+                  >
+                    {r.ok ? `${r.skills} skills` : r.issues[0]}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
-          <div className="flex flex-wrap items-center gap-1.5">
-            {["all", ...sourceKinds].map((kind) => (
-              <button
-                key={kind}
-                type="button"
-                onClick={() => setSourceFilter(kind)}
-                className={`rounded px-2 py-0.5 font-mono text-[11px] transition-colors ${
-                  sourceFilter === kind
-                    ? "bg-(--panel2) font-medium text-(--primary)"
-                    : "bg-(--canvas-soft) text-(--mute) hover:text-(--ink)"
-                }`}
-              >
-                {kind === "all"
-                  ? `All sources (${list.length})`
-                  : `${kind} (${list.filter((x) => x.sourceKind === kind).length})`}
-              </button>
-            ))}
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {statusTabs.map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                onClick={() => setStatusFilter(t.key)}
-                className={`rounded px-2 py-0.5 font-mono text-[11px] transition-colors ${
-                  statusFilter === t.key
-                    ? "bg-(--panel2) font-medium text-(--primary)"
-                    : "bg-(--canvas-soft) text-(--mute) hover:text-(--ink)"
-                }`}
-              >
-                {t.label} ({t.count})
-              </button>
-            ))}
-          </div>
-
-          <ListToolbar
-            searchValue={query}
-            onSearch={setQuery}
-            placeholder="Search skill packs by name or description"
-          />
-
-          {validateResult && (
-            <section className="space-y-2 rounded-lg border border-(--hairline) bg-(--panel) p-4">
-              <div className="flex items-center justify-between">
-                <MonoLabel>Manifest validation</MonoLabel>
-                <StatusPill tone={validateResult.every((r) => r.ok) ? "success" : "error"}>
-                  {validateResult.filter((r) => r.ok).length}/{validateResult.length} ok
-                </StatusPill>
-              </div>
-              <div className="divide-y divide-(--hairline) text-xs">
-                {validateResult.map((r) => (
-                  <div key={r.id} className="flex items-center justify-between gap-2 py-1.5">
-                    <span className="truncate font-mono text-(--ink)">{r.name}</span>
-                    <span
-                      className={`font-mono text-[10px] ${r.ok ? "text-(--ok)" : "text-(--err)"}`}
-                    >
-                      {r.ok ? `${r.skills} skills` : r.issues[0]}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          <div>
-            <SectionKicker hint="Sync pulls the latest revision of git packs.">
-              Installed packs
-            </SectionKicker>
-            {isLoading ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <Skeleton className="h-40" />
-                <Skeleton className="h-40" />
-                <Skeleton className="h-40" />
-              </div>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {filtered.map((p) => {
-                  const usedBy = usedByMap[p.id] ?? [];
-                  const isAssigned = (agentId: string) => {
-                    const idx = (agentsData ?? []).findIndex((a) => a.id === agentId);
-                    const agentPacks = agentPackQueries[idx]?.data;
-                    return Array.isArray(agentPacks) && agentPacks.some((pack) => pack.id === p.id);
-                  };
-                  const onAssign = (agentId: string) => {
-                    const idx = (agentsData ?? []).findIndex((a) => a.id === agentId);
-                    const current = agentPackQueries[idx]?.data;
-                    const currentIds = Array.isArray(current) ? current.map((x) => x.id) : [];
-                    const next = currentIds.includes(p.id) ? currentIds : [...currentIds, p.id];
-                    void api.setAgentSkillPacks(agentId, { packIds: next });
-                    void qc.invalidateQueries({ queryKey: skillPackKeys.agentPacks(agentId) });
-                  };
-                  const tone = statusTone(p.status) as StatusTone;
-                  const iconTone =
-                    p.sourceKind === "builtin"
-                      ? "var(--primary)"
-                      : p.sourceKind === "git"
-                        ? "var(--accent-violet)"
-                        : "var(--ok)";
-                  return (
-                    <div
-                      key={p.id}
-                      className="group relative flex flex-col justify-between rounded-lg border border-(--hairline) bg-(--panel) p-4 transition-colors hover:bg-(--canvas-soft)"
-                    >
-                      <div className="flex flex-col gap-2.5">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex min-w-0 items-center gap-2.5">
-                            <span
-                              className="flex size-10 shrink-0 items-center justify-center rounded"
-                              style={{
-                                backgroundColor: `color-mix(in srgb, ${iconTone} 10%, transparent)`,
-                                color: iconTone,
-                              }}
-                            >
-                              <Package className="size-5" />
-                            </span>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <span className="truncate font-display text-sm font-semibold text-(--ink-strong)">
-                                  {p.name}
-                                </span>
-                                {p.installedRef && (
-                                  <span className="shrink-0 font-mono text-[10px] text-(--faint)">
-                                    @{p.installedRef.slice(0, 8)}
-                                  </span>
-                                )}
-                              </div>
-                              <MonoLabel className="text-(--ok)">
-                                {p.sourceKind} · {p.status}
-                              </MonoLabel>
-                            </div>
-                          </div>
-                          <StatusPill tone={tone} className="shrink-0">
-                            {statusLabel(p.status)}
-                          </StatusPill>
-                        </div>
-                        <p className="line-clamp-2 text-xs text-(--mute)">
-                          {p.error ?? p.description ?? "No description."}
-                        </p>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <MonoLabel className="text-(--faint)">Bound agents:</MonoLabel>
-                          {usedBy.length > 0 ? (
-                            usedBy.slice(0, 3).map((agent) => (
-                              <span
-                                key={agent.id}
-                                className="rounded bg-(--canvas-soft) px-1.5 py-0.5 font-mono text-[10px] text-(--accent-violet)"
-                              >
-                                {agent.name}
-                              </span>
-                            ))
-                          ) : (
-                            <span className="font-mono text-[10px] text-(--warn)">
-                              not assigned
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-(--hairline) pt-2.5">
-                        <span className="font-mono text-[10px] text-(--faint)">
-                          {toDateString(p.createdAt)}
-                          {p.keepSynced === true ? " · auto-sync" : ""}
-                        </span>
-                        <div className="flex items-center gap-1.5">
-                          <AssignToAgentSelect
-                            agents={agentsData ?? []}
-                            assigned={isAssigned}
-                            onAssign={onAssign}
-                          />
-                          {p.sourceKind === "git" && p.status === "ready" && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={syncMutation.isPending}
-                              onClick={() => void handleSync(p.id)}
-                            >
-                              <RefreshCw
-                                className={`size-3 ${syncMutation.isPending ? "animate-spin" : ""}`}
-                              />
-                              Sync
-                            </Button>
-                          )}
-                          <Button variant="outline" size="sm" onClick={() => setSelectedId(p.id)}>
-                            Inspect
+        <div>
+          <SectionKicker hint="Sync pulls the latest revision of git packs.">
+            Installed packs
+          </SectionKicker>
+          {isLoading ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <Skeleton className="h-40" />
+              <Skeleton className="h-40" />
+              <Skeleton className="h-40" />
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {filtered.map((p) => {
+                const usedBy = usedByMap[p.id] ?? [];
+                const isAssigned = (agentId: string) => {
+                  const idx = (agentsData ?? []).findIndex((a) => a.id === agentId);
+                  const agentPacks = agentPackQueries[idx]?.data;
+                  return Array.isArray(agentPacks) && agentPacks.some((pack) => pack.id === p.id);
+                };
+                const onAssign = (agentId: string) => {
+                  const idx = (agentsData ?? []).findIndex((a) => a.id === agentId);
+                  const current = agentPackQueries[idx]?.data;
+                  const currentIds = Array.isArray(current) ? current.map((x) => x.id) : [];
+                  const next = currentIds.includes(p.id) ? currentIds : [...currentIds, p.id];
+                  void api.setAgentSkillPacks(agentId, { packIds: next });
+                  void qc.invalidateQueries({ queryKey: skillPackKeys.agentPacks(agentId) });
+                };
+                const statusToneResource = (status: string): ResourceTone =>
+                  status === "ready" ? "ok" : status === "failed" ? "err" : "warn";
+                const iconTone =
+                  p.sourceKind === "builtin"
+                    ? "var(--primary)"
+                    : p.sourceKind === "git"
+                      ? "var(--accent-violet)"
+                      : "var(--ok)";
+                return (
+                  <ResourceCard
+                    key={p.id}
+                    icon={
+                      <span
+                        className="flex size-full items-center justify-center rounded"
+                        style={{
+                          backgroundColor: `color-mix(in srgb, ${iconTone} 10%, transparent)`,
+                          color: iconTone,
+                        }}
+                      >
+                        <Package className="size-5" />
+                      </span>
+                    }
+                    title={p.name}
+                    idChip={p.installedRef ? `@${p.installedRef.slice(0, 8)}` : undefined}
+                    badge={{ label: statusLabel(p.status), tone: statusToneResource(p.status) }}
+                    tone={statusToneResource(p.status)}
+                    description={p.error ?? p.description ?? "No description."}
+                    lint={
+                      usedBy.length > 0
+                        ? [
+                            {
+                              label: `bound: ${usedBy
+                                .slice(0, 3)
+                                .map((a) => a.name)
+                                .join(", ")}${usedBy.length > 3 ? "…" : ""}`,
+                              tone: "ok" as const,
+                            },
+                          ]
+                        : [{ label: "not assigned", tone: "warn" as const }]
+                    }
+                    meta={`${p.sourceKind} · ${p.status} · ${toDateString(p.createdAt)}${
+                      p.keepSynced === true ? " · auto-sync" : ""
+                    }`}
+                    footer={
+                      <>
+                        <AssignToAgentSelect
+                          agents={agentsData ?? []}
+                          assigned={isAssigned}
+                          onAssign={onAssign}
+                        />
+                        {p.sourceKind === "git" && p.status === "ready" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={syncMutation.isPending}
+                            onClick={() => void handleSync(p.id)}
+                          >
+                            <RefreshCw
+                              className={`size-3 ${syncMutation.isPending ? "animate-spin" : ""}`}
+                            />
+                            Sync
                           </Button>
-                          {p.sourceKind !== "builtin" && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-(--err) hover:bg-(--err)/10"
-                              aria-label={`Delete ${p.name}`}
-                              onClick={() => void handleDelete(p)}
-                            >
-                              <Trash2 className="size-3" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-                {filtered.length === 0 && (
-                  <div data-testid="empty-state" className="col-span-full">
-                    <EmptyState
-                      icon={GitBranch}
-                      title="No skill packs installed"
-                      description="Install your first pack to give agents reusable skills."
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+                        )}
+                        <Button variant="outline" size="sm" onClick={() => setSelectedId(p.id)}>
+                          Inspect
+                        </Button>
+                        {p.sourceKind !== "builtin" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-(--err) hover:bg-(--err)/10"
+                            aria-label={`Delete ${p.name}`}
+                            onClick={() => void handleDelete(p)}
+                          >
+                            <Trash2 className="size-3" />
+                          </Button>
+                        )}
+                      </>
+                    }
+                  />
+                );
+              })}
+              {filtered.length === 0 && (
+                <div data-testid="empty-state" className="col-span-full">
+                  <EmptyState
+                    icon={GitBranch}
+                    title="No skill packs installed"
+                    description="Install your first pack to give agents reusable skills."
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
-      </PageBody>
+      </CapabilityListPage>
 
       <Dialog open={showInstall} onOpenChange={setShowInstall}>
         <DialogContent className="sm:max-w-lg">
@@ -705,6 +672,6 @@ export default function SkillPacksPage() {
       )}
 
       {confirmDialog}
-    </Page>
+    </>
   );
 }

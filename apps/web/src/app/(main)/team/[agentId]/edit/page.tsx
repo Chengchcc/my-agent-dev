@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AgentForm } from "@/components/AgentForm";
-import { Page, PageHeader } from "@/components/page";
+import { PageHeader } from "@/components/page";
 import { ChatPanel } from "@/components/workflow/ChatPanel";
 import { agentConfigToRow, useAgentConfigEvents } from "@/features/agents/config-mcp";
 import { useAgentDetail } from "@/features/agents/hooks";
@@ -39,7 +39,7 @@ export default function AgentEditPage() {
 
   if (isLoading) {
     return (
-      <Page>
+      <div className="flex h-full flex-col">
         <PageHeader
           breadcrumb={[
             { label: "Team", href: "/team" },
@@ -51,14 +51,14 @@ export default function AgentEditPage() {
           <div className="h-6 w-48 bg-(--panel2)" />
           <div className="h-4 w-32 bg-(--panel2)" />
         </div>
-      </Page>
+      </div>
     );
   }
 
   const editAgent = proposed ?? agent;
 
   return (
-    <Page>
+    <div className="flex h-full flex-col">
       <PageHeader
         breadcrumb={[
           { label: "Team", href: "/team" },
@@ -72,11 +72,11 @@ export default function AgentEditPage() {
         <div className="px-4 py-6 text-(--mute)">Agent not found.</div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-          {/* Left: the form */}
-          <div className="min-h-0 min-w-0 flex-1 border-(--hairline) p-4 md:border-r">
+          {/* Left: the form (scrolls internally; the chat stays pinned on the right) */}
+          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto border-(--hairline) p-4 md:border-r">
             <AgentForm editAgent={editAgent} alwaysOpen onSuccess={() => setProposed(null)} />
           </div>
-          {/* Right: chat */}
+          {/* Right: chat (full height, input pinned at the bottom) */}
           <div className="flex w-[320px] shrink-0 flex-col border-l border-(--hairline)">
             <ChatPanel
               conversationId={`agent:chat:${agentId}`}
@@ -101,6 +101,6 @@ export default function AgentEditPage() {
           </div>
         </div>
       )}
-    </Page>
+    </div>
   );
 }
