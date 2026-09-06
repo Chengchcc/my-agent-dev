@@ -20,6 +20,14 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { ExecutionRowsList, type WorkflowExec } from "@/components/workflow/ExecutionRowsList";
 import { api } from "@/lib/api";
 
 type Row = {
@@ -79,6 +87,20 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
   const [runVals, setRunVals] = useState<Record<string, string>>({});
   const [running, setRunning] = useState(false);
   const [newName, setNewName] = useState("");
+  const [sheetWorkflowId, setSheetWorkflowId] = useState<string | null>(null);
+  const [sheetExecs, setSheetExecs] = useState<WorkflowExec[]>([]);
+  const [sheetLoading, setSheetLoading] = useState(false);
+
+  async function openExecutions(workflowId: string) {
+    setSheetWorkflowId(workflowId);
+    setSheetExecs([]);
+    setSheetLoading(true);
+    api
+      .listWorkflowExecutions(workflowId)
+      .then((r) => setSheetExecs((r?.executions ?? []) as WorkflowExec[]))
+      .catch(() => setSheetExecs([]))
+      .finally(() => setSheetLoading(false));
+  }
 
   const cronCount = definitions.filter((d) => (d.triggers ?? []).length > 0).length;
   const dayAgo = Date.now() - 86_400_000;
@@ -269,12 +291,9 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
               <Button variant="outline" size="sm" onClick={() => openRun(d.workflowId)}>
                 Run
               </Button>
-              <Link
-                href={`/workflows/${d.workflowId}/executions`}
-                className="rounded-md border border-(--hairline) bg-(--panel) px-2 py-1 text-(--body) transition-colors hover:bg-(--panel2)"
-              >
+              <Button variant="outline" size="sm" onClick={() => openExecutions(d.workflowId)}>
                 Executions
-              </Link>
+              </Button>
               <Button variant="destructive" size="sm" onClick={() => setConfirmId(d.workflowId)}>
                 Delete
               </Button>
@@ -422,6 +441,27 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <Sheet open={sheetWorkflowId !== null} onOpenChange={(o) => !o && setSheetWorkflowId(null)}>
+        <SheetContent className="w-[92vw] max-w-[760px] overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="truncate">Executions</SheetTitle>
+            <SheetDescription className="truncate">Runs of {sheetWorkflowId}</SheetDescription>
+          </SheetHeader>
+          <div className="mt-4 space-y-2">
+            {sheetLoading ? (
+              <div className="text-sm text-(--mute)">Loading…</div>
+            ) : (
+              sheetWorkflowId && (
+                <ExecutionRowsList
+                  workflowId={sheetWorkflowId}
+                  executions={sheetExecs}
+                  onMutated={() => openExecutions(sheetWorkflowId)}
+                />
+              )
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </Page>
   );
 }
