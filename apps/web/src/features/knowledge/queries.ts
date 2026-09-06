@@ -23,3 +23,11 @@ export function knowledgePacksQuery() {
     queryFn: () => api.listKnowledgePacks() as Promise<{ packs: KnowledgePackRow[] }>,
   });
 }
+
+export function knowledgePackFilesQuery(id: string, path?: string) {
+  return queryOptions({
+    queryKey: knowledgePackKeys.files(id, path),
+    queryFn: () => api.getKnowledgePackFiles(id, path),
+    enabled: !!id,
+  });
+}

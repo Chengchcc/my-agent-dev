@@ -5,6 +5,7 @@ import { CircleCheck, Plug, RefreshCw, Server, Trash2, Wrench } from "lucide-rea
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AssignToAgentSelect } from "@/components/AssignToAgentSelect";
+import { PackAgentsTab } from "@/components/pack-agents-tab";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { KpiTile, MonoLabel, StatusPill, type StatusTone } from "@/components/patterns";
 import { Button } from "@/components/ui/button";
@@ -118,6 +119,9 @@ function normalizeMcpJson(raw: string): CreateMcpBody[] {
 function McpDetailSheet({
   server,
   agents,
+  isAssigned,
+  onAssign,
+  onRemove,
   onEdit,
   onTest,
   onDelete,
@@ -125,6 +129,9 @@ function McpDetailSheet({
 }: {
   server: McpCatalogRow;
   agents: AgentRow[];
+  isAssigned: (agentId: string) => boolean;
+  onAssign: (agentId: string) => void;
+  onRemove: (agentId: string) => void;
   onEdit: (serverId: string) => void;
   onTest: (serverId: string) => void;
   onDelete: (serverId: string) => void;
@@ -194,9 +201,9 @@ function McpDetailSheet({
       .finally(() => setRestarting(false));
   }
 
-  const usedByNames = agents
-    .filter((a) => a.mcpServers?.some((m) => m.serverId === server.serverId && m.enabled))
-    .map((a) => a.name);
+  const usedBy = agents.filter((a) =>
+    a.mcpServers?.some((m) => m.serverId === server.serverId && m.enabled),
+  );
   const tools = server.runtimeToolsCount ?? server.toolsCount ?? 0;
   const row = detail ?? server;
   const st = displayStatus(server);
@@ -257,7 +264,7 @@ function McpDetailSheet({
             <DetailRow label="Headers" value={Object.keys(row.headers ?? {}).join(", ") || "—"} />
             <DetailRow label="Status" value={displayStatus(server)} />
             <DetailRow label="Tools" value={`${tools}`} />
-            <DetailRow label="Installed" value={`${usedByNames.length} agents`} />
+            <DetailRow label="Installed" value={`${usedBy.length} agents`} />
           </dl>
         </div>
       )}
@@ -326,27 +333,13 @@ function McpDetailSheet({
         </div>
       )}
       {tab === "agents" && (
-        <div className="space-y-3">
-          {usedByNames.length === 0 ? (
-            <Text as="p" className="text-sm text-(--mute)">
-              Not assigned to any agent yet.
-            </Text>
-          ) : (
-            usedByNames.map((name) => (
-              <div
-                key={name}
-                className="flex items-center justify-between rounded-md border border-(--hairline) px-3 py-2"
-              >
-                <Text as="span" className="text-sm">
-                  {name}
-                </Text>
-                <span className="rounded bg-(--ok)/12 px-1.5 py-0.5 text-xs text-(--ok)">
-                  Active
-                </span>
-              </div>
-            ))
-          )}
-        </div>
+        <PackAgentsTab
+          agents={agents}
+          usedBy={usedBy}
+          isAssigned={isAssigned}
+          onAssign={onAssign}
+          onRemove={onRemove}
+        />
       )}
     </ResourceDetailSheet>
   );
@@ -1012,6 +1005,30 @@ export default function McpCatalogPage() {
         <McpDetailSheet
           server={selectedServer}
           agents={agentsData ?? []}
+          isAssigned={(agentId) =>
+            Boolean(
+              (agentsData ?? [])
+                .find((ag) => ag.id === agentId)
+                ?.mcpServers?.some((m) => m.serverId === selectedServer.serverId && m.enabled),
+            )
+          }
+          onAssign={(agentId) => {
+            const agent = (agentsData ?? []).find((ag) => ag.id === agentId);
+            const next = [
+              ...(agent?.mcpServers ?? []),
+              { serverId: selectedServer.serverId, enabled: true },
+            ];
+            void api.updateAgent(agentId, { mcpServers: next });
+            void qc.invalidateQueries({ queryKey: agentKeys.lists() });
+          }}
+          onRemove={(agentId) => {
+            const agent = (agentsData ?? []).find((ag) => ag.id === agentId);
+            const next = (agent?.mcpServers ?? []).filter(
+              (m) => m.serverId !== selectedServer.serverId,
+            );
+            void api.updateAgent(agentId, { mcpServers: next });
+            void qc.invalidateQueries({ queryKey: agentKeys.lists() });
+          }}
           onEdit={(serverId) => void beginEdit(serverId)}
           onTest={(serverId) => void test.mutate(serverId)}
           onDelete={(serverId) => setConfirmServerId(serverId)}

@@ -3,18 +3,20 @@
 import { Search } from "lucide-react";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
-import { api } from "@/lib/api";
+import { type PackKind, searchPackFiles } from "./pack-file-utils";
 
 type PackSearchHit = { path: string; line: number; snippet: string };
 
-/** Debounced full-text search over one skill pack's files.
+/** Debounced full-text search over one pack's files (skill or knowledge).
  *  Clicking a hit opens the file in the pack drawer's viewer. */
 export function PackFileSearch({
   packId,
   onOpen,
+  kind = "skill",
 }: {
   packId: string;
   onOpen: (path: string) => void;
+  kind?: PackKind;
 }) {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<PackSearchHit[]>([]);
@@ -26,7 +28,7 @@ export function PackFileSearch({
       return;
     }
     try {
-      const data = await api.searchSkillPack(packId, query.trim());
+      const data = await searchPackFiles(kind, packId, query.trim());
       setHits((data.results ?? []).slice(0, 20));
       setOpen(true);
     } catch {

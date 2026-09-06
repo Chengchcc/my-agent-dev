@@ -1,5 +1,5 @@
-import { readdirSync, rmSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { NotFoundError, ValidationError } from "../../infra/domain-errors.js";
 import type { KnowledgePackRow } from "./entities.js";
 import { installKnowledgePack, knowledgeInstallRoot } from "./install.js";
@@ -30,6 +30,17 @@ export interface KnowledgeService {
   stats(packId: string): KnowledgePackStats;
   allStats(): KnowledgePackStats[];
   getById(id: string): KnowledgePackRow | null;
+  /** Read one pack file or list a directory, rooted at the pack's install
+   *  dir. Mirrors the skill-pack files surface so knowledge packs can reuse
+   *  the same read-only viewer + file tree. */
+  files(
+    packId: string,
+    subpath?: string,
+  ):
+    | { type: "file"; path: string; content: string }
+    | { type: "dir"; path: string; entries: Array<{ name: string; type: "dir" | "file" }> };
+  /** Full-text search over the pack's files (subset: files ≤512k, ≤50 hits). */
+  search(packId: string, q: string): Array<{ path: string; line: number; snippet: string }>;
   install(input: {
     name: string;
     description?: string;
@@ -105,6 +116,78 @@ export function createKnowledgeService(deps: {
 
     getById(id: string): KnowledgePackRow | null {
       return deps.port.getById(id);
+    },
+
+    files(packId, subpath) {
+      const row = deps.port.getById(packId);
+      if (!row) throw new KnowledgePackNotFoundError(packId);
+      const root = knowledgeInstallRoot(deps.dataDir, packId);
+      // Traversal-safe: reject any path segment that isn't a plain name.
+      const segments = (subpath ?? "").split("/").filter(Boolean);
+      for (const seg of segments) {
+        if (!/^[^/\\]+$/.test(seg) || seg === "..") {
+          throw new KnowledgeValidationError("Invalid path segment");
+        }
+      }
+      const target = resolve(root, ...segments);
+      const rel = segments.join("/");
+      if (!target.startsWith(resolve(root))) {
+        throw new KnowledgeValidationError("Path escapes pack root");
+      }
+      let st: ReturnType<typeof statSync>;
+      try {
+        st = statSync(target);
+      } catch {
+        throw new KnowledgePackNotFoundError(packId);
+      }
+      if (st.isFile()) {
+        return { type: "file", path: rel, content: readFileSync(target, "utf8") };
+      }
+      const names = readdirSync(target, { withFileTypes: true })
+        .filter((d) => d.name !== ".git")
+        .map((d) => ({
+          name: d.name,
+          type: d.isDirectory() ? ("dir" as const) : ("file" as const),
+        }));
+      return { type: "dir", path: rel, entries: names };
+    },
+
+    search(packId, q) {
+      const row = deps.port.getById(packId);
+      if (!row) throw new KnowledgePackNotFoundError(packId);
+      const root = knowledgeInstallRoot(deps.dataDir, packId);
+      const needle = q.toLowerCase();
+      const results: Array<{ path: string; line: number; snippet: string }> = [];
+      const walk = (dir: string, rel: string) => {
+        if (results.length >= 50) return;
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          if (results.length >= 50) return;
+          if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+          const full = join(dir, entry.name);
+          const relPath = rel ? `${rel}/${entry.name}` : entry.name;
+          if (entry.isDirectory()) {
+            walk(full, relPath);
+          } else if (entry.isFile() && statSync(full).size <= 512_000) {
+            const lines = readFileSync(full, "utf8").split("\n");
+            for (let i = 0; i < lines.length && results.length < 50; i++) {
+              const line = lines[i] ?? "";
+              if (line.toLowerCase().includes(needle)) {
+                results.push({
+                  path: relPath,
+                  line: i + 1,
+                  snippet: line.trim().slice(0, 160),
+                });
+              }
+            }
+          }
+        }
+      };
+      try {
+        walk(root, "");
+      } catch {
+        /* materialized dir missing — no hits */
+      }
+      return results;
     },
 
     async install(input): Promise<KnowledgePackRow> {

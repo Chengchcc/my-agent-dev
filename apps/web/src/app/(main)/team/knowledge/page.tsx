@@ -12,8 +12,12 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AssignToAgentSelect } from "@/components/AssignToAgentSelect";
+import { PackFileSearch } from "@/components/PackFileSearch";
+import { PackFileViewer } from "@/components/PackFileViewer";
+import { PackAgentsTab } from "@/components/pack-agents-tab";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { KpiTile, MonoLabel, StatusPill, type StatusTone } from "@/components/patterns";
+import { FileTree } from "@/components/SkillPackManager";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -64,16 +68,19 @@ function KnowledgeDetailSheet({
   agents,
   isAssigned,
   onAssign,
+  onRemove,
   onClose,
 }: {
   pack: KnowledgePackRow;
-  usedBy: string[];
+  usedBy: AgentRow[];
   agents: AgentRow[];
   isAssigned: (agentId: string) => boolean;
   onAssign: (agentId: string) => void;
+  onRemove: (agentId: string) => void;
   onClose: () => void;
 }) {
-  const [tab, setTab] = useState<"overview" | "agents">("overview");
+  const [tab, setTab] = useState<"overview" | "files" | "agents">("overview");
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [stats, setStats] = useState<{
     files: number;
     totalBytes: number;
@@ -102,11 +109,21 @@ function KnowledgeDetailSheet({
       }}
       tabs={[
         { key: "overview", label: "Overview" },
+        { key: "files", label: "Files" },
         { key: "agents", label: "Agents" },
       ]}
       tab={tab}
-      onTabChange={(key) => setTab(key as "overview" | "agents")}
-      breadcrumb={[{ label: pack.name }, { label: "Overview" }]}
+      onTabChange={(key) => {
+        setTab(key as "overview" | "files" | "agents");
+        if (key !== "files") setSelectedFile(null);
+      }}
+      breadcrumb={[
+        { label: pack.name, onClick: () => setTab("overview") },
+        { label: tab === "overview" ? "Overview" : tab === "files" ? "Files" : "Agents" },
+        ...(tab === "files" && selectedFile
+          ? [{ label: selectedFile.split("/").pop() ?? selectedFile }]
+          : []),
+      ]}
       footer={
         <>
           <Text as="p" className="mr-auto text-xs text-(--mute)">
@@ -120,10 +137,22 @@ function KnowledgeDetailSheet({
     >
       {tab === "overview" && (
         <div className="space-y-4">
-          <Text as="p" className="text-sm text-(--mute)">
-            {pack.description || "No description."}
-          </Text>
-          <dl className="space-y-1 text-sm">
+          <div>
+            <Text as="p" className="text-sm text-(--mute)">
+              {pack.description || "No description."}
+            </Text>
+            <div className="mt-2 flex flex-wrap gap-1">
+              <span className="rounded bg-(--panel2) px-1.5 py-0.5 font-mono text-[10px] text-(--mute)">
+                {pack.sourceKind}
+              </span>
+              {pack.sourceRev && (
+                <span className="rounded bg-(--ok)/12 px-1.5 py-0.5 font-mono text-[10px] text-(--ok)">
+                  {pack.sourceRev.slice(0, 8)}
+                </span>
+              )}
+            </div>
+          </div>
+          <dl className="divide-y divide-(--hairline) rounded-md border border-(--hairline) bg-(--canvas-soft) px-3 py-1">
             <DetailRow label="Type" value={pack.sourceKind} />
             <DetailRow label="Source" value={pack.sourceUrl ?? pack.installedRef ?? "—"} />
             <DetailRow label="Status" value={badge.label} />
@@ -141,29 +170,44 @@ function KnowledgeDetailSheet({
           </dl>
         </div>
       )}
-      {tab === "agents" && (
-        <div className="space-y-3">
-          <AssignToAgentSelect agents={agents} assigned={isAssigned} onAssign={onAssign} />
-          {usedBy.length === 0 ? (
-            <Text as="p" className="text-sm text-(--mute)">
-              Not assigned to any agent yet.
+      {tab === "files" && (
+        <div className="flex min-h-0 flex-1 flex-col gap-4 md:flex-row">
+          <div className="space-y-3 md:w-[280px] md:shrink-0">
+            <Text as="p" className="text-sm font-semibold">
+              Files
             </Text>
-          ) : (
-            usedBy.map((name) => (
-              <div
-                key={name}
-                className="flex items-center justify-between rounded-md border border-(--hairline) px-3 py-2"
-              >
-                <Text as="span" className="text-sm">
-                  {name}
+            <PackFileSearch packId={pack.id} kind="knowledge" onOpen={(p) => setSelectedFile(p)} />
+            <div className="rounded-md border border-(--hairline) p-2">
+              <FileTree
+                packId={pack.id}
+                path=""
+                kind="knowledge"
+                onSelectFile={setSelectedFile}
+                selectedPath={selectedFile ?? undefined}
+              />
+            </div>
+          </div>
+          <div className="min-h-0 min-w-0 flex-1">
+            {selectedFile ? (
+              <PackFileViewer packId={pack.id} path={selectedFile} kind="knowledge" />
+            ) : (
+              <div className="rounded-lg border border-dashed border-(--hairline) p-8 text-center">
+                <Text as="p" className="text-sm text-(--mute)">
+                  Select a file to view its contents.
                 </Text>
-                <span className="rounded bg-(--ok)/12 px-1.5 py-0.5 text-xs text-(--ok)">
-                  Active
-                </span>
               </div>
-            ))
-          )}
+            )}
+          </div>
         </div>
+      )}
+      {tab === "agents" && (
+        <PackAgentsTab
+          agents={agents}
+          usedBy={usedBy}
+          isAssigned={isAssigned}
+          onAssign={onAssign}
+          onRemove={onRemove}
+        />
       )}
     </ResourceDetailSheet>
   );
@@ -557,9 +601,7 @@ export default function KnowledgePackPage() {
       {selectedPack && (
         <KnowledgeDetailSheet
           pack={selectedPack}
-          usedBy={(agentsData ?? [])
-            .filter((a) => a.knowledgePacks?.includes(selectedPack.id))
-            .map((a) => a.name)}
+          usedBy={(agentsData ?? []).filter((a) => a.knowledgePacks?.includes(selectedPack.id))}
           agents={agentsData ?? []}
           isAssigned={(agentId) =>
             Boolean(
@@ -570,7 +612,13 @@ export default function KnowledgePackPage() {
           }
           onAssign={(agentId) => {
             const agent = (agentsData ?? []).find((ag) => ag.id === agentId);
-            const next = [...(agent?.knowledgePacks ?? []), selectedPack.id];
+            const next = [...new Set([...(agent?.knowledgePacks ?? []), selectedPack.id])];
+            void api.updateAgent(agentId, { knowledgePacks: next });
+            void qc.invalidateQueries({ queryKey: agentKeys.lists() });
+          }}
+          onRemove={(agentId) => {
+            const agent = (agentsData ?? []).find((ag) => ag.id === agentId);
+            const next = (agent?.knowledgePacks ?? []).filter((id) => id !== selectedPack.id);
             void api.updateAgent(agentId, { knowledgePacks: next });
             void qc.invalidateQueries({ queryKey: agentKeys.lists() });
           }}

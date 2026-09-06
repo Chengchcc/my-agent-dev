@@ -373,6 +373,10 @@ export const api = {
     fetch("/api/bff/knowledge-packs", { credentials: "include" }).then((r) => r.json()),
   knowledgeStats: (packId: string) =>
     unwrap(client.api["knowledge-packs"]({ id: packId }).stats.get()),
+  getKnowledgePackFiles: (id: string, path?: string) =>
+    unwrap(client.api["knowledge-packs"]({ id }).files.get({ query: path ? { path } : undefined })),
+  searchKnowledgePack: (id: string, q: string) =>
+    unwrap(client.api["knowledge-packs"]({ id }).search.get({ query: { q } })),
   knowledgeAllStats: async () => {
     const r = await fetch("/api/bff/knowledge-packs/stats", { credentials: "include" });
     if (!r.ok) throw new Error(`stats failed: ${r.status}`);

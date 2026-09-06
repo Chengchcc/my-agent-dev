@@ -14,6 +14,46 @@ export function knowledgeRoutes(svc: KnowledgeService) {
     .get("/api/knowledge-packs", () => {
       return { packs: svc.list() };
     })
+    .get(
+      "/api/knowledge-packs/:id/files",
+      ({ params, query, set }) => {
+        try {
+          return svc.files(params.id, query.path);
+        } catch (e) {
+          if (e instanceof KnowledgePackNotFoundError) {
+            set.status = 404;
+            return { error: e.message };
+          }
+          set.status = 400;
+          return { error: (e as Error).message };
+        }
+      },
+      {
+        query: t.Object({
+          path: t.Optional(t.String()),
+        }),
+      },
+    )
+    .get(
+      "/api/knowledge-packs/:id/search",
+      ({ params, query, set }) => {
+        try {
+          return { results: svc.search(params.id, query.q) };
+        } catch (e) {
+          if (e instanceof KnowledgePackNotFoundError) {
+            set.status = 404;
+            return { error: e.message };
+          }
+          set.status = 400;
+          return { error: (e as Error).message };
+        }
+      },
+      {
+        query: t.Object({
+          q: t.String({ minLength: 1 }),
+        }),
+      },
+    )
     .post(
       "/api/knowledge-packs/install",
       async ({ body, set }) => {

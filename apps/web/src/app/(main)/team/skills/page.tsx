@@ -8,6 +8,7 @@ import { AssignToAgentSelect } from "@/components/AssignToAgentSelect";
 import { InstallPackForm } from "@/components/InstallPackForm";
 import { PackFileSearch } from "@/components/PackFileSearch";
 import { PackFileViewer } from "@/components/PackFileViewer";
+import { PackAgentsTab } from "@/components/pack-agents-tab";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { KpiTile, MonoLabel, StatusPill, type StatusTone } from "@/components/patterns";
 import { FileTree, statusLabel } from "@/components/SkillPackManager";
@@ -59,14 +60,16 @@ function PackDrawer({
   agents,
   isAssigned,
   onAssign,
+  onRemove,
   onSync,
   onClose,
 }: {
   pack: PackEntry;
-  usedBy: string[];
+  usedBy: AgentRow[];
   agents: AgentRow[];
   isAssigned: (agentId: string) => boolean;
   onAssign: (agentId: string) => void;
+  onRemove: (agentId: string) => void;
   onSync: () => void;
   onClose: () => void;
 }) {
@@ -210,30 +213,13 @@ function PackDrawer({
       )}
 
       {tab === "agents" && (
-        <div className="space-y-3">
-          <AssignToAgentSelect agents={agents} assigned={isAssigned} onAssign={onAssign} />
-          <div className="space-y-1">
-            {usedBy.length === 0 ? (
-              <Text as="p" className="text-sm text-(--mute)">
-                Not assigned to any agent yet.
-              </Text>
-            ) : (
-              usedBy.map((name) => (
-                <div
-                  key={name}
-                  className="flex items-center justify-between rounded-md border border-(--hairline) px-3 py-2"
-                >
-                  <Text as="span" className="text-sm">
-                    {name}
-                  </Text>
-                  <span className="rounded bg-(--ok)/12 px-1.5 py-0.5 text-xs text-(--ok)">
-                    Active
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+        <PackAgentsTab
+          agents={agents}
+          usedBy={usedBy}
+          isAssigned={isAssigned}
+          onAssign={onAssign}
+          onRemove={onRemove}
+        />
       )}
     </ResourceDetailSheet>
   );
@@ -274,12 +260,12 @@ export default function SkillPacksPage() {
   const agentPackQueries = useQueries({
     queries: (agentsData ?? []).map((a) => agentSkillPacksQuery(a.id)),
   });
-  const usedByMap: Record<string, string[]> = {};
+  const usedByMap: Record<string, AgentRow[]> = {};
   (agentsData ?? []).forEach((a, i) => {
     const agentPacks = agentPackQueries[i]?.data;
     if (!Array.isArray(agentPacks)) return;
     for (const p of agentPacks) {
-      usedByMap[p.id] = [...(usedByMap[p.id] ?? []), a.name];
+      usedByMap[p.id] = [...(usedByMap[p.id] ?? []), a];
     }
   });
 
@@ -595,12 +581,12 @@ export default function SkillPacksPage() {
                         <div className="flex flex-wrap items-center gap-1.5">
                           <MonoLabel className="text-(--faint)">Bound agents:</MonoLabel>
                           {usedBy.length > 0 ? (
-                            usedBy.slice(0, 3).map((name) => (
+                            usedBy.slice(0, 3).map((agent) => (
                               <span
-                                key={name}
+                                key={agent.id}
                                 className="rounded bg-(--canvas-soft) px-1.5 py-0.5 font-mono text-[10px] text-(--accent-violet)"
                               >
-                                {name}
+                                {agent.name}
                               </span>
                             ))
                           ) : (
@@ -702,6 +688,14 @@ export default function SkillPacksPage() {
             const next = currentIds.includes(selectedPack.id)
               ? currentIds
               : [...currentIds, selectedPack.id];
+            void api.setAgentSkillPacks(agentId, { packIds: next });
+            void qc.invalidateQueries({ queryKey: skillPackKeys.agentPacks(agentId) });
+          }}
+          onRemove={(agentId) => {
+            const idx = (agentsData ?? []).findIndex((a) => a.id === agentId);
+            const current = agentPackQueries[idx]?.data;
+            const currentIds = Array.isArray(current) ? current.map((x) => x.id) : [];
+            const next = currentIds.filter((id) => id !== selectedPack.id);
             void api.setAgentSkillPacks(agentId, { packIds: next });
             void qc.invalidateQueries({ queryKey: skillPackKeys.agentPacks(agentId) });
           }}

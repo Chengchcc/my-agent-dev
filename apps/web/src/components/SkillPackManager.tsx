@@ -13,6 +13,7 @@ import {
 import { useEffect, useState } from "react";
 import { FileContentViewer } from "@/components/FileContentViewer";
 import { PackFileSearch } from "@/components/PackFileSearch";
+import { type PackKind, usePackFiles } from "@/components/pack-file-utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,7 +22,6 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   useDeletePack,
-  useSkillPackFiles,
   useSkillPackList,
   useSkillPackSkills,
   useSyncPack,
@@ -60,13 +60,15 @@ export function FileTree({
   path,
   onSelectFile,
   selectedPath,
+  kind = "skill",
 }: {
   packId: string;
   path: string;
   onSelectFile: (p: string) => void;
   selectedPath?: string;
+  kind?: PackKind;
 }) {
-  const { data, isLoading } = useSkillPackFiles(packId, path || undefined);
+  const { data, isLoading } = usePackFiles(kind, packId, path || undefined);
 
   if (isLoading) return <Skeleton className="h-8 w-full" />;
   if (!data) return null;
@@ -109,6 +111,7 @@ export function FileTree({
                   path={entryPath}
                   onSelectFile={onSelectFile}
                   selectedPath={selectedPath}
+                  kind={kind}
                 />
               </details>
             </li>
@@ -135,8 +138,16 @@ export function FileTree({
   );
 }
 
-export function FileContent({ packId, path }: { packId: string; path: string }) {
-  const { data, isLoading } = useSkillPackFiles(packId, path);
+export function FileContent({
+  packId,
+  path,
+  kind = "skill",
+}: {
+  packId: string;
+  path: string;
+  kind?: PackKind;
+}) {
+  const { data, isLoading } = usePackFiles(kind, packId, path);
 
   if (isLoading) return <Skeleton className="h-96 w-full" />;
   if (data?.type !== "file") return null;
