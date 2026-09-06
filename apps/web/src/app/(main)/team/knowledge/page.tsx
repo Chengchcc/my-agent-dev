@@ -10,10 +10,10 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { CapabilityListPage } from "@/components/capability-list-page";
 import { PackFileSearch } from "@/components/PackFileSearch";
 import { PackFileViewer } from "@/components/PackFileViewer";
 import { PackAgentsTab } from "@/components/pack-agents-tab";
+import { Page, PageBody, PageHeader } from "@/components/page";
 import { KpiTile, StatusPill } from "@/components/patterns";
 import { FileTree } from "@/components/SkillPackManager";
 import { Button } from "@/components/ui/button";
@@ -27,7 +27,7 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { SectionKicker, statusBadge } from "@/components/ui/polish";
+import { InfoBanner, ListToolbar, SectionKicker, statusBadge } from "@/components/ui/polish";
 import {
   ResourceCard,
   ResourceCardContent,
@@ -338,8 +338,8 @@ export default function KnowledgePackPage() {
   ].map((t) => ({ ...t, count: statusCount(t.key) }));
 
   return (
-    <>
-      <CapabilityListPage
+    <Page>
+      <PageHeader
         breadcrumb="Team / Capabilities / Knowledge"
         title="Knowledge"
         description="Shared knowledge packs, attached per agent from the agent's Knowledge tab."
@@ -362,13 +362,16 @@ export default function KnowledgePackPage() {
             </Button>
           </>
         }
-        banner={{
-          id: "ib:knowledge-help",
-          title: "How this page works",
-          body: "Packs are installed from a git repo or the builtin library, then referenced by agents. Example: https://github.com/org/repo.git or a local path.",
-        }}
-        kpis={
-          <>
+      />
+      <PageBody>
+        <div className="space-y-6">
+          <InfoBanner
+            id="ib:knowledge-help"
+            title="How this page works"
+            body="Packs are installed from a git repo or the builtin library, then referenced by agents. Example: https://github.com/org/repo.git or a local path."
+          />
+
+          <div data-testid="stat-cards" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
             <KpiTile label="Packs" value={packs.length} icon={BookOpenIcon} detail="installed" />
             <KpiTile
               label="Ready"
@@ -392,9 +395,8 @@ export default function KnowledgePackPage() {
               icon={Download}
               detail="pending · syncing"
             />
-          </>
-        }
-        filters={
+          </div>
+
           <div className="flex flex-wrap items-center gap-1.5">
             {statusTabs.map((t) => (
               <button
@@ -411,74 +413,74 @@ export default function KnowledgePackPage() {
               </button>
             ))}
           </div>
-        }
-        search={{
-          value: query,
-          onChange: setQuery,
-          placeholder: "Search packs by name or description",
-        }}
-      >
-        <div>
-          <SectionKicker hint="Installed packs are available to every agent.">
-            Installed packs
-          </SectionKicker>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map((p) => {
-              const iconTone =
-                p.sourceKind === "builtin" ? "var(--primary)" : "var(--accent-violet)";
-              return (
-                <ResourceCard key={p.id} tone={packResourceTone(p.status)}>
-                  <ResourceCardHeader
-                    icon={
-                      <span
-                        className="flex size-full items-center justify-center rounded"
-                        style={{
-                          backgroundColor: `color-mix(in srgb, ${iconTone} 10%, transparent)`,
-                          color: iconTone,
-                        }}
-                      >
-                        <BookOpen className="size-5" />
-                      </span>
-                    }
-                    title={p.name}
-                    idChip={p.sourceRev ? `@${p.sourceRev.slice(0, 8)}` : undefined}
-                    badge={{ label: statusLabel(p.status), tone: packResourceTone(p.status) }}
+
+          <ListToolbar
+            searchValue={query}
+            onSearch={setQuery}
+            placeholder="Search packs by name or description"
+          />
+          <div>
+            <SectionKicker hint="Installed packs are available to every agent.">
+              Installed packs
+            </SectionKicker>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {filtered.map((p) => {
+                const iconTone =
+                  p.sourceKind === "builtin" ? "var(--primary)" : "var(--accent-violet)";
+                return (
+                  <ResourceCard key={p.id} tone={packResourceTone(p.status)}>
+                    <ResourceCardHeader
+                      icon={
+                        <span
+                          className="flex size-full items-center justify-center rounded"
+                          style={{
+                            backgroundColor: `color-mix(in srgb, ${iconTone} 10%, transparent)`,
+                            color: iconTone,
+                          }}
+                        >
+                          <BookOpen className="size-5" />
+                        </span>
+                      }
+                      title={p.name}
+                      idChip={p.sourceRev ? `@${p.sourceRev.slice(0, 8)}` : undefined}
+                      badge={{ label: statusLabel(p.status), tone: packResourceTone(p.status) }}
+                    />
+                    <ResourceCardContent>
+                      <p className="line-clamp-2 text-sm text-(--mute)">
+                        {(p.status === "failed" && p.error) || p.description || "No description."}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <ResourceTag
+                          label={`${p.sourceKind} · ${statusLabel(p.status)}`}
+                          tone="info"
+                        />
+                        {(() => {
+                          const st = allStats[p.id];
+                          return st ? <ResourceTag label={`${st.files} files`} /> : null;
+                        })()}
+                      </div>
+                      <p className="text-xs text-(--mute)">{formatDate(p.createdAt)}</p>
+                    </ResourceCardContent>
+                    <ResourceCardFooter
+                      meta={`● ${statusLabel(p.status)}${p.error ? " · error" : ""}`}
+                      action={{ label: "Inspect", onClick: () => setSelectedId(p.id) }}
+                    />
+                  </ResourceCard>
+                );
+              })}
+              {filtered.length === 0 && (
+                <div data-testid="empty-state" className="col-span-full">
+                  <EmptyState
+                    icon={BookOpen}
+                    title="No knowledge packs installed"
+                    description="Install your first pack with the Install Pack button above."
                   />
-                  <ResourceCardContent>
-                    <p className="line-clamp-2 text-sm text-(--mute)">
-                      {(p.status === "failed" && p.error) || p.description || "No description."}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-1">
-                      <ResourceTag
-                        label={`${p.sourceKind} · ${statusLabel(p.status)}`}
-                        tone="info"
-                      />
-                      {(() => {
-                        const st = allStats[p.id];
-                        return st ? <ResourceTag label={`${st.files} files`} /> : null;
-                      })()}
-                    </div>
-                    <p className="text-xs text-(--mute)">{formatDate(p.createdAt)}</p>
-                  </ResourceCardContent>
-                  <ResourceCardFooter
-                    meta={`● ${statusLabel(p.status)}${p.error ? " · error" : ""}`}
-                    action={{ label: "Inspect", onClick: () => setSelectedId(p.id) }}
-                  />
-                </ResourceCard>
-              );
-            })}
-            {filtered.length === 0 && (
-              <div data-testid="empty-state" className="col-span-full">
-                <EmptyState
-                  icon={BookOpen}
-                  title="No knowledge packs installed"
-                  description="Install your first pack with the Install Pack button above."
-                />
-              </div>
-            )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </CapabilityListPage>
+      </PageBody>
 
       <Dialog open={showInstall} onOpenChange={setShowInstall}>
         <DialogContent className="sm:max-w-lg">
@@ -594,6 +596,6 @@ export default function KnowledgePackPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </Page>
   );
 }

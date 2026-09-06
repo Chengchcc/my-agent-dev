@@ -4,18 +4,18 @@ import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { Download, GitBranch, Package, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { CapabilityListPage } from "@/components/capability-list-page";
 import { InstallPackForm } from "@/components/InstallPackForm";
 import { PackFileSearch } from "@/components/PackFileSearch";
 import { PackFileViewer } from "@/components/PackFileViewer";
 import { PackAgentsTab } from "@/components/pack-agents-tab";
+import { Page, PageBody, PageHeader } from "@/components/page";
 import { KpiTile, MonoLabel, StatusPill } from "@/components/patterns";
 import { FileTree, statusLabel } from "@/components/SkillPackManager";
 import { Button } from "@/components/ui/button";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
-import { SectionKicker, statusBadge } from "@/components/ui/polish";
+import { InfoBanner, ListToolbar, SectionKicker, statusBadge } from "@/components/ui/polish";
 import {
   ResourceCard,
   ResourceCardContent,
@@ -379,8 +379,8 @@ export default function SkillPacksPage() {
   }
 
   return (
-    <>
-      <CapabilityListPage
+    <Page>
+      <PageHeader
         breadcrumb="Team / Capabilities / Skills"
         title="Skills"
         description="Managed skills and capability bundles per agent."
@@ -414,13 +414,16 @@ export default function SkillPacksPage() {
             </Button>
           </>
         }
-        banner={{
-          id: "ib:skills-help",
-          title: "How this page works",
-          body: "Install a pack from git or a zip upload, then assign it per agent from the agent's Skills tab. Click a card to browse its skills and files.",
-        }}
-        kpis={
-          <>
+      />
+      <PageBody>
+        <div className="space-y-6">
+          <InfoBanner
+            id="ib:skills-help"
+            title="How this page works"
+            body="Install a pack from git or a zip upload, then assign it per agent from the agent's Skills tab. Click a card to browse its skills and files."
+          />
+
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
             <KpiTile label="Packs" value={list.length} icon={Package} detail="installed" />
             <KpiTile
               label="Ready"
@@ -444,150 +447,147 @@ export default function SkillPacksPage() {
               bar={errors > 0 ? 100 : 0}
               barTone="err"
             />
-          </>
-        }
-        filters={
-          <>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {["all", ...sourceKinds].map((kind) => (
-                <button
-                  key={kind}
-                  type="button"
-                  onClick={() => setSourceFilter(kind)}
-                  className={`rounded px-2 py-0.5 font-mono text-[11px] transition-colors ${
-                    sourceFilter === kind
-                      ? "bg-(--panel2) font-medium text-(--primary)"
-                      : "bg-(--canvas-soft) text-(--mute) hover:text-(--ink)"
-                  }`}
-                >
-                  {kind === "all"
-                    ? `All sources (${list.length})`
-                    : `${kind} (${list.filter((x) => x.sourceKind === kind).length})`}
-                </button>
-              ))}
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {statusTabs.map((t) => (
-                <button
-                  key={t.key}
-                  type="button"
-                  onClick={() => setStatusFilter(t.key)}
-                  className={`rounded px-2 py-0.5 font-mono text-[11px] transition-colors ${
-                    statusFilter === t.key
-                      ? "bg-(--panel2) font-medium text-(--primary)"
-                      : "bg-(--canvas-soft) text-(--mute) hover:text-(--ink)"
-                  }`}
-                >
-                  {t.label} ({t.count})
-                </button>
-              ))}
-            </div>
-          </>
-        }
-        search={{
-          value: query,
-          onChange: setQuery,
-          placeholder: "Search skill packs by name or description",
-        }}
-      >
-        {validateResult && (
-          <section className="space-y-2 rounded-lg border border-(--hairline) bg-(--panel) p-4">
-            <div className="flex items-center justify-between">
-              <MonoLabel>Manifest validation</MonoLabel>
-              <StatusPill tone={validateResult.every((r) => r.ok) ? "success" : "error"}>
-                {validateResult.filter((r) => r.ok).length}/{validateResult.length} ok
-              </StatusPill>
-            </div>
-            <div className="divide-y divide-(--hairline) text-xs">
-              {validateResult.map((r) => (
-                <div key={r.id} className="flex items-center justify-between gap-2 py-1.5">
-                  <span className="truncate font-mono text-(--ink)">{r.name}</span>
-                  <span
-                    className={`font-mono text-[10px] ${r.ok ? "text-(--ok)" : "text-(--err)"}`}
-                  >
-                    {r.ok ? `${r.skills} skills` : r.issues[0]}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+          </div>
 
-        <div>
-          <SectionKicker hint="Sync pulls the latest revision of git packs.">
-            Installed packs
-          </SectionKicker>
-          {isLoading ? (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <Skeleton className="h-40" />
-              <Skeleton className="h-40" />
-              <Skeleton className="h-40" />
-            </div>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {filtered.map((p) => {
-                const statusToneResource = (status: string): ResourceTone =>
-                  status === "ready" ? "ok" : status === "failed" ? "err" : "warn";
-                const iconTone =
-                  p.sourceKind === "builtin"
-                    ? "var(--primary)"
-                    : p.sourceKind === "git"
-                      ? "var(--accent-violet)"
-                      : "var(--ok)";
-                return (
-                  <ResourceCard
-                    key={p.id}
-                    tone={statusToneResource(p.status)}
-                    // Open the pack detail sheet when clicking the card body.
-                  >
-                    <ResourceCardHeader
-                      icon={
-                        <span
-                          className="flex size-full items-center justify-center rounded"
-                          style={{
-                            backgroundColor: `color-mix(in srgb, ${iconTone} 10%, transparent)`,
-                            color: iconTone,
-                          }}
-                        >
-                          <Package className="size-5" />
-                        </span>
-                      }
-                      title={p.name}
-                      idChip={p.installedRef ? `@${p.installedRef.slice(0, 8)}` : undefined}
-                      badge={{ label: statusLabel(p.status), tone: statusToneResource(p.status) }}
-                    />
-                    <ResourceCardContent>
-                      <p className="line-clamp-2 text-sm text-(--mute)">
-                        {p.error ?? p.description ?? "No description."}
-                      </p>
-                      <div className="flex flex-wrap items-center gap-1">
-                        <ResourceTag label={p.sourceKind} tone="info" />
-                      </div>
-                      <p className="text-xs text-(--mute)">
-                        {toDateString(p.createdAt)}
-                        {p.keepSynced === true ? " · auto-sync" : ""}
-                      </p>
-                    </ResourceCardContent>
-                    <ResourceCardFooter
-                      meta={`● ${statusLabel(p.status)}${p.error ? " · error" : ""}`}
-                      action={{ label: "Inspect", onClick: () => setSelectedId(p.id) }}
-                    />
-                  </ResourceCard>
-                );
-              })}
-              {filtered.length === 0 && (
-                <div data-testid="empty-state" className="col-span-full">
-                  <EmptyState
-                    icon={GitBranch}
-                    title="No skill packs installed"
-                    description="Install your first pack to give agents reusable skills."
-                  />
-                </div>
-              )}
-            </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {["all", ...sourceKinds].map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => setSourceFilter(kind)}
+                className={`rounded px-2 py-0.5 font-mono text-[11px] transition-colors ${
+                  sourceFilter === kind
+                    ? "bg-(--panel2) font-medium text-(--primary)"
+                    : "bg-(--canvas-soft) text-(--mute) hover:text-(--ink)"
+                }`}
+              >
+                {kind === "all"
+                  ? `All sources (${list.length})`
+                  : `${kind} (${list.filter((x) => x.sourceKind === kind).length})`}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {statusTabs.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setStatusFilter(t.key)}
+                className={`rounded px-2 py-0.5 font-mono text-[11px] transition-colors ${
+                  statusFilter === t.key
+                    ? "bg-(--panel2) font-medium text-(--primary)"
+                    : "bg-(--canvas-soft) text-(--mute) hover:text-(--ink)"
+                }`}
+              >
+                {t.label} ({t.count})
+              </button>
+            ))}
+          </div>
+
+          <ListToolbar
+            searchValue={query}
+            onSearch={setQuery}
+            placeholder="Search skill packs by name or description"
+          />
+          {validateResult && (
+            <section className="space-y-2 rounded-lg border border-(--hairline) bg-(--panel) p-4">
+              <div className="flex items-center justify-between">
+                <MonoLabel>Manifest validation</MonoLabel>
+                <StatusPill tone={validateResult.every((r) => r.ok) ? "success" : "error"}>
+                  {validateResult.filter((r) => r.ok).length}/{validateResult.length} ok
+                </StatusPill>
+              </div>
+              <div className="divide-y divide-(--hairline) text-xs">
+                {validateResult.map((r) => (
+                  <div key={r.id} className="flex items-center justify-between gap-2 py-1.5">
+                    <span className="truncate font-mono text-(--ink)">{r.name}</span>
+                    <span
+                      className={`font-mono text-[10px] ${r.ok ? "text-(--ok)" : "text-(--err)"}`}
+                    >
+                      {r.ok ? `${r.skills} skills` : r.issues[0]}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
           )}
+
+          <div>
+            <SectionKicker hint="Sync pulls the latest revision of git packs.">
+              Installed packs
+            </SectionKicker>
+            {isLoading ? (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <Skeleton className="h-40" />
+                <Skeleton className="h-40" />
+                <Skeleton className="h-40" />
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {filtered.map((p) => {
+                  const statusToneResource = (status: string): ResourceTone =>
+                    status === "ready" ? "ok" : status === "failed" ? "err" : "warn";
+                  const iconTone =
+                    p.sourceKind === "builtin"
+                      ? "var(--primary)"
+                      : p.sourceKind === "git"
+                        ? "var(--accent-violet)"
+                        : "var(--ok)";
+                  return (
+                    <ResourceCard
+                      key={p.id}
+                      tone={statusToneResource(p.status)}
+                      // Open the pack detail sheet when clicking the card body.
+                    >
+                      <ResourceCardHeader
+                        icon={
+                          <span
+                            className="flex size-full items-center justify-center rounded"
+                            style={{
+                              backgroundColor: `color-mix(in srgb, ${iconTone} 10%, transparent)`,
+                              color: iconTone,
+                            }}
+                          >
+                            <Package className="size-5" />
+                          </span>
+                        }
+                        title={p.name}
+                        idChip={p.installedRef ? `@${p.installedRef.slice(0, 8)}` : undefined}
+                        badge={{ label: statusLabel(p.status), tone: statusToneResource(p.status) }}
+                      />
+                      <ResourceCardContent>
+                        <p className="line-clamp-2 text-sm text-(--mute)">
+                          {p.error ?? p.description ?? "No description."}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-1">
+                          <ResourceTag label={p.sourceKind} tone="info" />
+                        </div>
+                        <p className="text-xs text-(--mute)">
+                          {toDateString(p.createdAt)}
+                          {p.keepSynced === true ? " · auto-sync" : ""}
+                        </p>
+                      </ResourceCardContent>
+                      <ResourceCardFooter
+                        meta={`● ${statusLabel(p.status)}${p.error ? " · error" : ""}`}
+                        action={{ label: "Inspect", onClick: () => setSelectedId(p.id) }}
+                      />
+                    </ResourceCard>
+                  );
+                })}
+                {filtered.length === 0 && (
+                  <div data-testid="empty-state" className="col-span-full">
+                    <EmptyState
+                      icon={GitBranch}
+                      title="No skill packs installed"
+                      description="Install your first pack to give agents reusable skills."
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </CapabilityListPage>
+      </PageBody>
 
       <Dialog open={showInstall} onOpenChange={setShowInstall}>
         <DialogContent className="sm:max-w-lg">
@@ -641,6 +641,6 @@ export default function SkillPacksPage() {
       )}
 
       {confirmDialog}
-    </>
+    </Page>
   );
 }

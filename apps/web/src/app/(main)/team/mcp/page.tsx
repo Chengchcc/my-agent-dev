@@ -4,8 +4,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, Plug, RefreshCw, Server, Wrench } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { CapabilityListPage } from "@/components/capability-list-page";
 import { PackAgentsTab } from "@/components/pack-agents-tab";
+import { Page, PageBody, PageHeader } from "@/components/page";
 import { KpiTile, MonoLabel, StatusPill } from "@/components/patterns";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,7 +18,7 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { SubTabs } from "@/components/ui/polish";
+import { InfoBanner, ListToolbar, SubTabs } from "@/components/ui/polish";
 import {
   ResourceCard,
   ResourceCardContent,
@@ -587,8 +587,8 @@ export default function McpCatalogPage() {
   };
 
   return (
-    <>
-      <CapabilityListPage
+    <Page>
+      <PageHeader
         breadcrumb="Team / Capabilities / MCP hub"
         title="MCP Servers & Tool Bindings"
         pill={
@@ -615,13 +615,16 @@ export default function McpCatalogPage() {
             </Button>
           </>
         }
-        banner={{
-          id: "ib:mcp-help",
-          title: "How this page works",
-          body: "Server definitions persist in mcp-servers.json (file-first). Add a server here once, then enable it per agent from the agent's MCP tab. Status prefers the latest REAL runtime mount result reported by the agent child; before any Run it falls back to the backend manager probe.",
-        }}
-        kpis={
-          <>
+      />
+      <PageBody>
+        <div className="space-y-6">
+          <InfoBanner
+            id="ib:mcp-help"
+            title="How this page works"
+            body="Server definitions persist in mcp-servers.json (file-first). Add a server here once, then enable it per agent from the agent's MCP tab. Status prefers the latest REAL runtime mount result reported by the agent child; before any Run it falls back to the backend manager probe."
+          />
+
+          <div data-testid="stat-cards" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
             <KpiTile
               label="Servers"
               value={servers.length}
@@ -643,9 +646,8 @@ export default function McpCatalogPage() {
               detail="manager reachable"
             />
             <KpiTile label="Tools" value={tools} icon={Wrench} detail="exposed methods" />
-          </>
-        }
-        filters={
+          </div>
+
           <div className="flex flex-wrap items-center gap-1.5">
             {(["all", "stdio", "sse"] as const).map((t) => (
               <button
@@ -664,76 +666,80 @@ export default function McpCatalogPage() {
               </button>
             ))}
           </div>
-        }
-        search={{ value: query, onChange: setQuery, placeholder: "Search by name, command or URL" }}
-      >
-        <div>
-          <div className="flex items-center gap-2.5">
-            <h2 className="font-display text-lg font-semibold tracking-tight text-(--ink-strong)">
-              Active MCP Servers
-            </h2>
-            <StatusPill tone="idle">{servers.length} total</StatusPill>
-            <MonoLabel className="text-(--faint)">click mono id to copy</MonoLabel>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map((s) => {
-              const status = displayStatus(s);
-              const resourceTone: ResourceTone =
-                status === "ok" ? "ok" : status === "err" ? "err" : "default";
-              const iconTone = s.transport === "sse" ? "var(--accent-violet)" : "var(--primary)";
-              const endpoint = s.transport === "sse" ? (s.url ?? "") : (s.command ?? "");
-              return (
-                <ResourceCard key={s.serverId} tone={resourceTone}>
-                  <ResourceCardHeader
-                    icon={
-                      <span
-                        className="flex size-full items-center justify-center rounded"
-                        style={{
-                          backgroundColor: `color-mix(in srgb, ${iconTone} 10%, transparent)`,
-                          color: iconTone,
-                        }}
-                      >
-                        <Server className="size-5" />
-                      </span>
-                    }
-                    title={s.name}
-                    idChip={endpoint || undefined}
-                    badge={{ label: statusLabel(status), tone: resourceTone }}
+
+          <ListToolbar
+            searchValue={query}
+            onSearch={setQuery}
+            placeholder="Search by name, command or URL"
+          />
+          <div>
+            <div className="flex items-center gap-2.5">
+              <h2 className="font-display text-lg font-semibold tracking-tight text-(--ink-strong)">
+                Active MCP Servers
+              </h2>
+              <StatusPill tone="idle">{servers.length} total</StatusPill>
+              <MonoLabel className="text-(--faint)">click mono id to copy</MonoLabel>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {filtered.map((s) => {
+                const status = displayStatus(s);
+                const resourceTone: ResourceTone =
+                  status === "ok" ? "ok" : status === "err" ? "err" : "default";
+                const iconTone = s.transport === "sse" ? "var(--accent-violet)" : "var(--primary)";
+                const endpoint = s.transport === "sse" ? (s.url ?? "") : (s.command ?? "");
+                return (
+                  <ResourceCard key={s.serverId} tone={resourceTone}>
+                    <ResourceCardHeader
+                      icon={
+                        <span
+                          className="flex size-full items-center justify-center rounded"
+                          style={{
+                            backgroundColor: `color-mix(in srgb, ${iconTone} 10%, transparent)`,
+                            color: iconTone,
+                          }}
+                        >
+                          <Server className="size-5" />
+                        </span>
+                      }
+                      title={s.name}
+                      idChip={endpoint || undefined}
+                      badge={{ label: statusLabel(status), tone: resourceTone }}
+                    />
+                    <ResourceCardContent>
+                      <p className="line-clamp-2 text-sm text-(--mute)">
+                        {s.runtimeError ?? serverMeta(s) ?? "No runtime probe yet."}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <ResourceTag
+                          label={s.transport}
+                          tone={s.transport === "sse" ? "info" : "default"}
+                        />
+                        <ResourceTag label={`${s.runtimeToolsCount ?? s.toolsCount ?? 0} tools`} />
+                        {s.runtimeCheckedAt && (
+                          <ResourceTag label={`checked ${hhmm(s.runtimeCheckedAt)}`} />
+                        )}
+                      </div>
+                    </ResourceCardContent>
+                    <ResourceCardFooter
+                      meta={`● ${statusLabel(status)}${s.runtimeError ? " · error" : ""}`}
+                      action={{ label: "Inspect", onClick: () => void beginEdit(s.serverId) }}
+                    />
+                  </ResourceCard>
+                );
+              })}
+              {filtered.length === 0 && (
+                <div data-testid="empty-state" className="col-span-full">
+                  <EmptyState
+                    icon={Plug}
+                    title="No servers yet"
+                    description="Add your first MCP server with the Add Server button above."
                   />
-                  <ResourceCardContent>
-                    <p className="line-clamp-2 text-sm text-(--mute)">
-                      {s.runtimeError ?? serverMeta(s) ?? "No runtime probe yet."}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-1">
-                      <ResourceTag
-                        label={s.transport}
-                        tone={s.transport === "sse" ? "info" : "default"}
-                      />
-                      <ResourceTag label={`${s.runtimeToolsCount ?? s.toolsCount ?? 0} tools`} />
-                      {s.runtimeCheckedAt && (
-                        <ResourceTag label={`checked ${hhmm(s.runtimeCheckedAt)}`} />
-                      )}
-                    </div>
-                  </ResourceCardContent>
-                  <ResourceCardFooter
-                    meta={`● ${statusLabel(status)}${s.runtimeError ? " · error" : ""}`}
-                    action={{ label: "Inspect", onClick: () => void beginEdit(s.serverId) }}
-                  />
-                </ResourceCard>
-              );
-            })}
-            {filtered.length === 0 && (
-              <div data-testid="empty-state" className="col-span-full">
-                <EmptyState
-                  icon={Plug}
-                  title="No servers yet"
-                  description="Add your first MCP server with the Add Server button above."
-                />
-              </div>
-            )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </CapabilityListPage>
+      </PageBody>
 
       <Dialog
         open={showForm}
@@ -968,6 +974,6 @@ export default function McpCatalogPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </Page>
   );
 }

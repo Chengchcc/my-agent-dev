@@ -55,8 +55,8 @@ export function ResourceCard({
       size="sm"
       onClick={onClick}
       className={cn(
-        "relative h-full",
-        accent && accent !== "default" && "pr-3",
+        "relative h-full overflow-hidden",
+        accent && accent !== "default" && "pl-3",
         onClick && "cursor-pointer transition-colors hover:bg-(--panel2)",
         className,
       )}
@@ -64,7 +64,7 @@ export function ResourceCard({
       {accent && accent !== "default" && (
         <span
           aria-hidden
-          className="absolute inset-y-0 right-0 w-1"
+          className="absolute inset-y-0 left-0 w-1"
           style={{ background: `var(--${accent})` }}
         />
       )}
