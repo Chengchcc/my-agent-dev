@@ -1,10 +1,9 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CircleCheck, Plug, RefreshCw, Server, Trash2, Wrench } from "lucide-react";
+import { CircleCheck, Plug, RefreshCw, Server, Wrench } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { AssignToAgentSelect } from "@/components/AssignToAgentSelect";
 import { CapabilityListPage } from "@/components/capability-list-page";
 import { PackAgentsTab } from "@/components/pack-agents-tab";
 import { KpiTile, MonoLabel, StatusPill } from "@/components/patterns";
@@ -20,7 +19,14 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SubTabs } from "@/components/ui/polish";
-import { ResourceCard, type ResourceTone } from "@/components/ui/resource-card";
+import {
+  ResourceCard,
+  ResourceCardContent,
+  ResourceCardFooter,
+  ResourceCardHeader,
+  ResourceTag,
+  type ResourceTone,
+} from "@/components/ui/resource-card";
 import { ResourceDetailSheet } from "@/components/ui/resource-detail-sheet";
 import { Text } from "@/components/ui/text";
 import { Textarea } from "@/components/ui/textarea";
@@ -671,113 +677,49 @@ export default function McpCatalogPage() {
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((s) => {
-              const usedByNames = (agentsData ?? [])
-                .filter((a) => a.mcpServers?.some((m) => m.serverId === s.serverId && m.enabled))
-                .map((a) => a.name);
               const status = displayStatus(s);
               const resourceTone: ResourceTone =
                 status === "ok" ? "ok" : status === "err" ? "err" : "default";
               const iconTone = s.transport === "sse" ? "var(--accent-violet)" : "var(--primary)";
               const endpoint = s.transport === "sse" ? (s.url ?? "") : (s.command ?? "");
               return (
-                <ResourceCard
-                  key={s.serverId}
-                  icon={
-                    <span
-                      className="flex size-full items-center justify-center rounded"
-                      style={{
-                        backgroundColor: `color-mix(in srgb, ${iconTone} 10%, transparent)`,
-                        color: iconTone,
-                      }}
-                    >
-                      <Server className="size-5" />
-                    </span>
-                  }
-                  title={s.name}
-                  idChip={endpoint || undefined}
-                  badge={{ label: statusLabel(status), tone: resourceTone }}
-                  tone={resourceTone}
-                  description={s.runtimeError ?? serverMeta(s) ?? "No runtime probe yet."}
-                  tags={[
-                    { label: s.transport, tone: s.transport === "sse" ? "info" : "default" },
-                    { label: `${s.runtimeToolsCount ?? s.toolsCount ?? 0} tools` },
-                    ...(s.runtimeCheckedAt
-                      ? [{ label: `checked ${hhmm(s.runtimeCheckedAt)}`, tone: "default" as const }]
-                      : []),
-                  ]}
-                  lint={
-                    usedByNames.length > 0
-                      ? [
-                          {
-                            label: `bound: ${usedByNames.slice(0, 3).join(", ")}${
-                              usedByNames.length > 3 ? "…" : ""
-                            }`,
-                            tone: "ok" as const,
-                          },
-                        ]
-                      : [{ label: "not assigned", tone: "warn" as const }]
-                  }
-                  footer={
-                    <>
-                      <button
-                        type="button"
-                        className="font-mono text-[10px] text-(--faint) hover:text-(--primary)"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void navigator.clipboard.writeText(s.serverId);
+                <ResourceCard key={s.serverId} tone={resourceTone}>
+                  <ResourceCardHeader
+                    icon={
+                      <span
+                        className="flex size-full items-center justify-center rounded"
+                        style={{
+                          backgroundColor: `color-mix(in srgb, ${iconTone} 10%, transparent)`,
+                          color: iconTone,
                         }}
-                        title="Copy server id"
                       >
-                        {s.serverId.slice(0, 10)}
-                      </button>
-                      <AssignToAgentSelect
-                        agents={agentsData ?? []}
-                        assigned={(agentId) =>
-                          (agentsData ?? []).some(
-                            (ag) =>
-                              ag.id === agentId &&
-                              Boolean(
-                                ag.mcpServers?.some((m) => m.serverId === s.serverId && m.enabled),
-                              ),
-                          )
-                        }
-                        onAssign={(agentId) => {
-                          const agent = (agentsData ?? []).find((ag) => ag.id === agentId);
-                          const next = [
-                            ...(agent?.mcpServers ?? []),
-                            { serverId: s.serverId, enabled: true },
-                          ];
-                          void api.updateAgent(agentId, { mcpServers: next });
-                          void qc.invalidateQueries({ queryKey: agentKeys.lists() });
-                        }}
+                        <Server className="size-5" />
+                      </span>
+                    }
+                    title={s.name}
+                    idChip={endpoint || undefined}
+                    badge={{ label: statusLabel(status), tone: resourceTone }}
+                  />
+                  <ResourceCardContent>
+                    <p className="line-clamp-2 text-sm text-(--mute)">
+                      {s.runtimeError ?? serverMeta(s) ?? "No runtime probe yet."}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <ResourceTag
+                        label={s.transport}
+                        tone={s.transport === "sse" ? "info" : "default"}
                       />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void beginEdit(s.serverId)}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={test.isPending}
-                        onClick={() => void test.mutate(s.serverId)}
-                      >
-                        {test.isPending ? "Testing…" : "Test"}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-(--err) hover:bg-(--err)/10"
-                        aria-label={`Delete ${s.name}`}
-                        onClick={() => setConfirmServerId(s.serverId)}
-                      >
-                        <Trash2 className="size-3" />
-                      </Button>
-                    </>
-                  }
-                />
+                      <ResourceTag label={`${s.runtimeToolsCount ?? s.toolsCount ?? 0} tools`} />
+                      {s.runtimeCheckedAt && (
+                        <ResourceTag label={`checked ${hhmm(s.runtimeCheckedAt)}`} />
+                      )}
+                    </div>
+                  </ResourceCardContent>
+                  <ResourceCardFooter
+                    meta={`● ${statusLabel(status)}${s.runtimeError ? " · error" : ""}`}
+                    action={{ label: "Inspect", onClick: () => void beginEdit(s.serverId) }}
+                  />
+                </ResourceCard>
               );
             })}
             {filtered.length === 0 && (

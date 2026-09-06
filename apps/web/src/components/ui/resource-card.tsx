@@ -1,7 +1,9 @@
 "use client";
 
+import { ArrowRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Text } from "@/components/ui/text";
 import { cn } from "@/lib/utils";
@@ -31,41 +33,23 @@ export function ResourceTag({ label, tone }: { label: string; tone?: ResourceTon
   );
 }
 
-/**
- * Unified small card for team resource pools (skills / mcp / knowledge /
- * projects). Header = icon + title + status badge; body = description +
- * tags/lint + meta line; footer = text action buttons.
- */
+/** Thin headless card shell for resource pools (skills / mcp / knowledge).
+ *  Provides only the card chrome + an optional right-edge tone bar. Content is
+ *  supplied by the caller via <ResourceCardHeader>/<ResourceCardContent>/
+ *  <ResourceCardFooter> children — shadcn-style, no fixed business fields. */
 export function ResourceCard({
-  icon,
-  title,
-  idChip,
-  badge,
   tone,
-  description,
-  tags,
-  lint,
-  meta,
-  footer,
   onClick,
   className,
+  children,
 }: {
-  icon?: ReactNode;
-  title: string;
-  idChip?: string;
-  badge?: { label: string; tone?: ResourceTone };
-  /** Right-edge accent bar color. Defaults to the badge tone; pass explicitly
-   *  when there's no badge but a status color is wanted (e.g. list cards). */
+  /** Right-edge accent bar color. "default" (or omitted) renders no bar. */
   tone?: ResourceTone;
-  description?: string;
-  tags?: Array<{ label: string; tone?: ResourceTone }>;
-  lint?: Array<{ label: string; tone?: ResourceTone }>;
-  meta?: string;
-  footer?: ReactNode;
   onClick?: () => void;
   className?: string;
+  children: ReactNode;
 }) {
-  const accent = tone ?? badge?.tone;
+  const accent = tone;
   return (
     <Card
       size="sm"
@@ -84,58 +68,91 @@ export function ResourceCard({
           style={{ background: `var(--${accent})` }}
         />
       )}
-      <CardHeader className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          {icon && (
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-(--hairline) bg-(--panel2)">
-              {icon}
-            </div>
-          )}
-          <div className="min-w-0">
-            <CardTitle className="truncate">{title}</CardTitle>
-            {idChip && (
-              <Text as="p" className="truncate font-mono text-xs text-(--faint)">
-                {idChip}
-              </Text>
-            )}
-          </div>
-        </div>
-        {badge && (
-          <Badge variant={badgeVariant(badge.tone)} className="shrink-0">
-            {badge.label}
-          </Badge>
-        )}
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {description && (
-          <Text as="p" className="line-clamp-2 text-sm text-(--mute)">
-            {description}
-          </Text>
-        )}
-        {(tags?.length || lint?.length) && (
-          <div className="flex flex-wrap items-center gap-1">
-            {tags?.map((t) => (
-              <ResourceTag key={`t-${t.label}`} {...t} />
-            ))}
-            {lint?.map((t) => (
-              <ResourceTag key={`l-${t.label}`} {...t} />
-            ))}
-          </div>
-        )}
-        {meta && (
-          <Text as="p" className="text-xs text-(--mute)">
-            {meta}
-          </Text>
-        )}
-      </CardContent>
-      {footer && (
-        <CardFooter
-          className="flex-wrap justify-start gap-1 border-t bg-transparent p-3"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {footer}
-        </CardFooter>
-      )}
+      {children}
     </Card>
+  );
+}
+
+/** Header: icon tile + title + id chip + optional status badge. */
+export function ResourceCardHeader({
+  icon,
+  title,
+  idChip,
+  badge,
+  className,
+}: {
+  icon?: ReactNode;
+  title: string;
+  idChip?: string;
+  badge?: { label: string; tone?: ResourceTone };
+  className?: string;
+}) {
+  return (
+    <CardHeader className={cn("flex items-start justify-between gap-2", className)}>
+      <div className="flex min-w-0 items-center gap-2">
+        {icon && (
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-(--hairline) bg-(--panel2)">
+            {icon}
+          </div>
+        )}
+        <div className="min-w-0">
+          <CardTitle className="truncate">{title}</CardTitle>
+          {idChip && (
+            <Text as="p" className="truncate font-mono text-xs text-(--faint)">
+              {idChip}
+            </Text>
+          )}
+        </div>
+      </div>
+      {badge && (
+        <Badge variant={badgeVariant(badge.tone)} className="shrink-0">
+          {badge.label}
+        </Badge>
+      )}
+    </CardHeader>
+  );
+}
+
+/** Body: free-form content. */
+export function ResourceCardContent({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return <CardContent className={cn("space-y-2", className)}>{children}</CardContent>;
+}
+
+/**
+ * Uniform footer: left meta/status mono line + right single action button with
+ * an arrow, matching the design's "Inspect ⟶" control across all cap cards.
+ * `children` (rare extra controls) render after the action.
+ */
+export function ResourceCardFooter({
+  meta,
+  action,
+  children,
+}: {
+  meta?: ReactNode;
+  action?: { label: string; onClick?: () => void };
+  children?: ReactNode;
+}) {
+  return (
+    <CardFooter
+      className="flex-wrap items-center justify-between gap-1 border-t bg-transparent p-3"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {meta && <span className="min-w-0 truncate font-mono text-[10px] text-(--mute)">{meta}</span>}
+      <span className="flex shrink-0 items-center gap-1">
+        {action && (
+          <Button variant="outline" size="sm" className="gap-1" onClick={action.onClick}>
+            {action.label}
+            <ArrowRight className="size-3.5" />
+          </Button>
+        )}
+        {children}
+      </span>
+    </CardFooter>
   );
 }

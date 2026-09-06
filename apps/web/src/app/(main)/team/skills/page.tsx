@@ -4,7 +4,6 @@ import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { Download, GitBranch, Package, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { AssignToAgentSelect } from "@/components/AssignToAgentSelect";
 import { CapabilityListPage } from "@/components/capability-list-page";
 import { InstallPackForm } from "@/components/InstallPackForm";
 import { PackFileSearch } from "@/components/PackFileSearch";
@@ -17,7 +16,14 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SectionKicker, statusBadge } from "@/components/ui/polish";
-import { ResourceCard, type ResourceTone } from "@/components/ui/resource-card";
+import {
+  ResourceCard,
+  ResourceCardContent,
+  ResourceCardFooter,
+  ResourceCardHeader,
+  ResourceTag,
+  type ResourceTone,
+} from "@/components/ui/resource-card";
 import { ResourceDetailSheet } from "@/components/ui/resource-detail-sheet";
 import {
   Select,
@@ -56,6 +62,7 @@ function PackDrawer({
   onAssign,
   onRemove,
   onSync,
+  onDelete,
   onClose,
 }: {
   pack: PackEntry;
@@ -65,6 +72,7 @@ function PackDrawer({
   onAssign: (agentId: string) => void;
   onRemove: (agentId: string) => void;
   onSync: () => void;
+  onDelete: () => void;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<"overview" | "files" | "agents">("overview");
@@ -118,6 +126,16 @@ function PackDrawer({
           {pack.sourceKind === "git" && (
             <Button variant="outline" size="sm" onClick={onSync}>
               Sync from Git
+            </Button>
+          )}
+          {pack.sourceKind !== "builtin" && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-(--err) hover:bg-(--err)/10"
+              onClick={onDelete}
+            >
+              Delete
             </Button>
           )}
           <Button variant="outline" size="sm" onClick={onClose}>
@@ -337,7 +355,6 @@ export default function SkillPacksPage() {
       },
     );
   };
-
   const handleDelete = async (pack: PackEntry) => {
     const ok = await confirm({
       title: `Delete pack "${pack.name}"?`,
@@ -345,7 +362,10 @@ export default function SkillPacksPage() {
       confirmText: "Delete",
       destructive: true,
     });
-    if (ok) deleteMutation.mutate(pack.id);
+    if (ok) {
+      deleteMutation.mutate(pack.id);
+      setSelectedId(null);
+    }
   };
 
   async function runValidate() {
@@ -511,20 +531,6 @@ export default function SkillPacksPage() {
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {filtered.map((p) => {
-                const usedBy = usedByMap[p.id] ?? [];
-                const isAssigned = (agentId: string) => {
-                  const idx = (agentsData ?? []).findIndex((a) => a.id === agentId);
-                  const agentPacks = agentPackQueries[idx]?.data;
-                  return Array.isArray(agentPacks) && agentPacks.some((pack) => pack.id === p.id);
-                };
-                const onAssign = (agentId: string) => {
-                  const idx = (agentsData ?? []).findIndex((a) => a.id === agentId);
-                  const current = agentPackQueries[idx]?.data;
-                  const currentIds = Array.isArray(current) ? current.map((x) => x.id) : [];
-                  const next = currentIds.includes(p.id) ? currentIds : [...currentIds, p.id];
-                  void api.setAgentSkillPacks(agentId, { packIds: next });
-                  void qc.invalidateQueries({ queryKey: skillPackKeys.agentPacks(agentId) });
-                };
                 const statusToneResource = (status: string): ResourceTone =>
                   status === "ready" ? "ok" : status === "failed" ? "err" : "warn";
                 const iconTone =
@@ -536,75 +542,42 @@ export default function SkillPacksPage() {
                 return (
                   <ResourceCard
                     key={p.id}
-                    icon={
-                      <span
-                        className="flex size-full items-center justify-center rounded"
-                        style={{
-                          backgroundColor: `color-mix(in srgb, ${iconTone} 10%, transparent)`,
-                          color: iconTone,
-                        }}
-                      >
-                        <Package className="size-5" />
-                      </span>
-                    }
-                    title={p.name}
-                    idChip={p.installedRef ? `@${p.installedRef.slice(0, 8)}` : undefined}
-                    badge={{ label: statusLabel(p.status), tone: statusToneResource(p.status) }}
                     tone={statusToneResource(p.status)}
-                    description={p.error ?? p.description ?? "No description."}
-                    lint={
-                      usedBy.length > 0
-                        ? [
-                            {
-                              label: `bound: ${usedBy
-                                .slice(0, 3)
-                                .map((a) => a.name)
-                                .join(", ")}${usedBy.length > 3 ? "…" : ""}`,
-                              tone: "ok" as const,
-                            },
-                          ]
-                        : [{ label: "not assigned", tone: "warn" as const }]
-                    }
-                    meta={`${p.sourceKind} · ${p.status} · ${toDateString(p.createdAt)}${
-                      p.keepSynced === true ? " · auto-sync" : ""
-                    }`}
-                    footer={
-                      <>
-                        <AssignToAgentSelect
-                          agents={agentsData ?? []}
-                          assigned={isAssigned}
-                          onAssign={onAssign}
-                        />
-                        {p.sourceKind === "git" && p.status === "ready" && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={syncMutation.isPending}
-                            onClick={() => void handleSync(p.id)}
-                          >
-                            <RefreshCw
-                              className={`size-3 ${syncMutation.isPending ? "animate-spin" : ""}`}
-                            />
-                            Sync
-                          </Button>
-                        )}
-                        <Button variant="outline" size="sm" onClick={() => setSelectedId(p.id)}>
-                          Inspect
-                        </Button>
-                        {p.sourceKind !== "builtin" && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-(--err) hover:bg-(--err)/10"
-                            aria-label={`Delete ${p.name}`}
-                            onClick={() => void handleDelete(p)}
-                          >
-                            <Trash2 className="size-3" />
-                          </Button>
-                        )}
-                      </>
-                    }
-                  />
+                    // Open the pack detail sheet when clicking the card body.
+                  >
+                    <ResourceCardHeader
+                      icon={
+                        <span
+                          className="flex size-full items-center justify-center rounded"
+                          style={{
+                            backgroundColor: `color-mix(in srgb, ${iconTone} 10%, transparent)`,
+                            color: iconTone,
+                          }}
+                        >
+                          <Package className="size-5" />
+                        </span>
+                      }
+                      title={p.name}
+                      idChip={p.installedRef ? `@${p.installedRef.slice(0, 8)}` : undefined}
+                      badge={{ label: statusLabel(p.status), tone: statusToneResource(p.status) }}
+                    />
+                    <ResourceCardContent>
+                      <p className="line-clamp-2 text-sm text-(--mute)">
+                        {p.error ?? p.description ?? "No description."}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <ResourceTag label={p.sourceKind} tone="info" />
+                      </div>
+                      <p className="text-xs text-(--mute)">
+                        {toDateString(p.createdAt)}
+                        {p.keepSynced === true ? " · auto-sync" : ""}
+                      </p>
+                    </ResourceCardContent>
+                    <ResourceCardFooter
+                      meta={`● ${statusLabel(p.status)}${p.error ? " · error" : ""}`}
+                      action={{ label: "Inspect", onClick: () => setSelectedId(p.id) }}
+                    />
+                  </ResourceCard>
                 );
               })}
               {filtered.length === 0 && (
@@ -667,6 +640,7 @@ export default function SkillPacksPage() {
             void qc.invalidateQueries({ queryKey: skillPackKeys.agentPacks(agentId) });
           }}
           onSync={() => void handleSync(selectedPack.id)}
+          onDelete={() => void handleDelete(selectedPack)}
           onClose={() => setSelectedId(null)}
         />
       )}

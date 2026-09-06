@@ -8,10 +8,8 @@ import {
   CircleCheck,
   Download,
   RefreshCw,
-  Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { AssignToAgentSelect } from "@/components/AssignToAgentSelect";
 import { CapabilityListPage } from "@/components/capability-list-page";
 import { PackFileSearch } from "@/components/PackFileSearch";
 import { PackFileViewer } from "@/components/PackFileViewer";
@@ -30,7 +28,14 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SectionKicker, statusBadge } from "@/components/ui/polish";
-import { ResourceCard, type ResourceTone } from "@/components/ui/resource-card";
+import {
+  ResourceCard,
+  ResourceCardContent,
+  ResourceCardFooter,
+  ResourceCardHeader,
+  ResourceTag,
+  type ResourceTone,
+} from "@/components/ui/resource-card";
 import { ResourceDetailSheet } from "@/components/ui/resource-detail-sheet";
 import { Text } from "@/components/ui/text";
 import { Textarea } from "@/components/ui/textarea";
@@ -69,6 +74,7 @@ function KnowledgeDetailSheet({
   isAssigned,
   onAssign,
   onRemove,
+  onDelete,
   onClose,
 }: {
   pack: KnowledgePackRow;
@@ -77,6 +83,7 @@ function KnowledgeDetailSheet({
   isAssigned: (agentId: string) => boolean;
   onAssign: (agentId: string) => void;
   onRemove: (agentId: string) => void;
+  onDelete: () => void;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<"overview" | "files" | "agents">("overview");
@@ -129,6 +136,14 @@ function KnowledgeDetailSheet({
           <Text as="p" className="mr-auto text-xs text-(--mute)">
             Used by {usedBy.length} agent{usedBy.length > 1 ? "s" : ""}
           </Text>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-(--err) hover:bg-(--err)/10"
+            onClick={onDelete}
+          >
+            Delete
+          </Button>
           <Button variant="outline" size="sm" onClick={onClose}>
             Close
           </Button>
@@ -412,89 +427,47 @@ export default function KnowledgePackPage() {
           </SectionKicker>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((p) => {
-              const usedByNames = (agentsData ?? [])
-                .filter((a) => a.knowledgePacks?.includes(p.id))
-                .map((a) => a.name);
-              const isAssigned = (agentId: string) =>
-                Boolean(
-                  (agentsData ?? [])
-                    .find((ag) => ag.id === agentId)
-                    ?.knowledgePacks?.includes(p.id),
-                );
-              const onAssign = (agentId: string) => {
-                const agent = (agentsData ?? []).find((ag) => ag.id === agentId);
-                const next = [...(agent?.knowledgePacks ?? []), p.id];
-                void api.updateAgent(agentId, { knowledgePacks: next });
-                void qc.invalidateQueries({ queryKey: agentKeys.lists() });
-              };
               const iconTone =
                 p.sourceKind === "builtin" ? "var(--primary)" : "var(--accent-violet)";
               return (
-                <ResourceCard
-                  key={p.id}
-                  icon={
-                    <span
-                      className="flex size-full items-center justify-center rounded"
-                      style={{
-                        backgroundColor: `color-mix(in srgb, ${iconTone} 10%, transparent)`,
-                        color: iconTone,
-                      }}
-                    >
-                      <BookOpen className="size-5" />
-                    </span>
-                  }
-                  title={p.name}
-                  idChip={p.sourceRev ? `@${p.sourceRev.slice(0, 8)}` : undefined}
-                  badge={{ label: statusLabel(p.status), tone: packResourceTone(p.status) }}
-                  tone={packResourceTone(p.status)}
-                  description={
-                    (p.status === "failed" && p.error) || p.description || "No description."
-                  }
-                  tags={(() => {
-                    const st = allStats[p.id];
-                    return [
-                      {
-                        label: `${p.sourceKind} · ${statusLabel(p.status)}`,
-                        tone: "info" as const,
-                      },
-                      ...(st ? [{ label: `${st.files} files`, tone: "default" as const }] : []),
-                    ];
-                  })()}
-                  lint={
-                    usedByNames.length > 0
-                      ? [
-                          {
-                            label: `bound: ${usedByNames.slice(0, 3).join(", ")}${
-                              usedByNames.length > 3 ? "…" : ""
-                            }`,
-                            tone: "ok" as const,
-                          },
-                        ]
-                      : [{ label: "not assigned", tone: "warn" as const }]
-                  }
-                  meta={formatDate(p.createdAt)}
-                  footer={
-                    <>
-                      <AssignToAgentSelect
-                        agents={agentsData ?? []}
-                        assigned={isAssigned}
-                        onAssign={onAssign}
-                      />
-                      <Button variant="outline" size="sm" onClick={() => setSelectedId(p.id)}>
-                        Inspect
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-(--err) hover:bg-(--err)/10"
-                        aria-label={`Delete ${p.name}`}
-                        onClick={() => setConfirmPackId(p.id)}
+                <ResourceCard key={p.id} tone={packResourceTone(p.status)}>
+                  <ResourceCardHeader
+                    icon={
+                      <span
+                        className="flex size-full items-center justify-center rounded"
+                        style={{
+                          backgroundColor: `color-mix(in srgb, ${iconTone} 10%, transparent)`,
+                          color: iconTone,
+                        }}
                       >
-                        <Trash2 className="size-3" />
-                      </Button>
-                    </>
-                  }
-                />
+                        <BookOpen className="size-5" />
+                      </span>
+                    }
+                    title={p.name}
+                    idChip={p.sourceRev ? `@${p.sourceRev.slice(0, 8)}` : undefined}
+                    badge={{ label: statusLabel(p.status), tone: packResourceTone(p.status) }}
+                  />
+                  <ResourceCardContent>
+                    <p className="line-clamp-2 text-sm text-(--mute)">
+                      {(p.status === "failed" && p.error) || p.description || "No description."}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <ResourceTag
+                        label={`${p.sourceKind} · ${statusLabel(p.status)}`}
+                        tone="info"
+                      />
+                      {(() => {
+                        const st = allStats[p.id];
+                        return st ? <ResourceTag label={`${st.files} files`} /> : null;
+                      })()}
+                    </div>
+                    <p className="text-xs text-(--mute)">{formatDate(p.createdAt)}</p>
+                  </ResourceCardContent>
+                  <ResourceCardFooter
+                    meta={`● ${statusLabel(p.status)}${p.error ? " · error" : ""}`}
+                    action={{ label: "Inspect", onClick: () => setSelectedId(p.id) }}
+                  />
+                </ResourceCard>
               );
             })}
             {filtered.length === 0 && (
@@ -593,6 +566,7 @@ export default function KnowledgePackPage() {
             void api.updateAgent(agentId, { knowledgePacks: next });
             void qc.invalidateQueries({ queryKey: agentKeys.lists() });
           }}
+          onDelete={() => setConfirmPackId(selectedPack.id)}
           onClose={() => setSelectedId(null)}
         />
       )}

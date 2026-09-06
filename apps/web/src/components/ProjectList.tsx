@@ -7,7 +7,13 @@ import { toast } from "sonner";
 import { AssignToAgentSelect } from "@/components/AssignToAgentSelect";
 import { ProjectDetailSheet } from "@/components/ProjectDetailSheet";
 import { Button } from "@/components/ui/button";
-import { ResourceCard } from "@/components/ui/resource-card";
+import {
+  ResourceCard,
+  ResourceCardContent,
+  ResourceCardFooter,
+  ResourceCardHeader,
+  ResourceTag,
+} from "@/components/ui/resource-card";
 import { useAgentList } from "@/features/agents/hooks";
 import { agentKeys } from "@/features/agents/query-keys";
 import { useDeleteProject, useProjectList } from "@/features/projects/hooks";
@@ -65,100 +71,98 @@ export function ProjectList() {
             void qc.invalidateQueries({ queryKey: agentKeys.lists() });
           };
           return (
-            <ResourceCard
-              key={project.projectId}
-              icon={<FolderGit2 className="size-4 text-(--mute)" />}
-              title={project.name}
-              description={project.repoUrl ?? "No repository configured"}
-              tags={[
-                {
-                  label: project.repoUrl ? "repository" : "no repo",
-                  tone: "info",
-                },
-                ...(project.defaultBranch
-                  ? [{ label: project.defaultBranch, tone: "info" as const }]
-                  : []),
-              ]}
-              lint={
-                usedByAgents.length
-                  ? [
-                      {
-                        label: `${usedByAgents.length} agent${usedByAgents.length > 1 ? "s" : ""}`,
-                        tone: "ok" as const,
-                      },
-                    ]
-                  : [{ label: "not attached", tone: "warn" as const }]
-              }
-              meta={`Created ${new Date(project.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
-              footer={
-                <>
-                  <AssignToAgentSelect
-                    agents={agentsData ?? []}
-                    assigned={(agentId) =>
-                      Boolean(
-                        (agentsData ?? [])
-                          .find((ag) => ag.id === agentId)
-                          ?.projects?.includes(project.projectId),
-                      )
-                    }
-                    onAssign={onAssign}
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setSelectedId(project.projectId)}
-                  >
-                    View
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => setEditingProject(project)}>
-                    Edit
-                  </Button>
-                  {confirmingId === project.projectId ? (
-                    <>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => {
-                          remove.mutate(project.projectId, {
-                            onSuccess: () => {
-                              toast.success("Project deleted");
-                              setConfirmingId(null);
-                            },
-                            onError: (err) => {
-                              const message = err instanceof Error ? err.message : "Unknown error";
-                              const is409 =
-                                message.includes("409") ||
-                                message.toLowerCase().includes("still has");
-                              toast.error(
-                                is409
-                                  ? "Cannot delete — project still has issues"
-                                  : "Failed to delete project",
-                                { description: message },
-                              );
-                            },
-                          });
-                        }}
-                        disabled={remove.isPending}
-                      >
-                        Confirm
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => setConfirmingId(null)}>
-                        Cancel
-                      </Button>
-                    </>
-                  ) : (
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => setConfirmingId(project.projectId)}
-                    >
-                      Delete
-                    </Button>
+            <ResourceCard key={project.projectId}>
+              <ResourceCardHeader
+                icon={<FolderGit2 className="size-4 text-(--mute)" />}
+                title={project.name}
+              />
+              <ResourceCardContent>
+                <p className="line-clamp-2 text-sm text-(--mute)">
+                  {project.repoUrl ?? "No repository configured"}
+                </p>
+                <div className="flex flex-wrap items-center gap-1">
+                  <ResourceTag label={project.repoUrl ? "repository" : "no repo"} tone="info" />
+                  {project.defaultBranch && (
+                    <ResourceTag label={project.defaultBranch} tone="info" />
                   )}
-                </>
-              }
-              onClick={() => setSelectedId(project.projectId)}
-            />
+                  {usedByAgents.length ? (
+                    <ResourceTag
+                      label={`${usedByAgents.length} agent${usedByAgents.length > 1 ? "s" : ""}`}
+                      tone="ok"
+                    />
+                  ) : (
+                    <ResourceTag label="not attached" tone="warn" />
+                  )}
+                </div>
+                <p className="text-xs text-(--mute)">
+                  Created{" "}
+                  {new Date(project.createdAt).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  })}
+                </p>
+              </ResourceCardContent>
+              <ResourceCardFooter
+                action={{ label: "View", onClick: () => setSelectedId(project.projectId) }}
+              >
+                <AssignToAgentSelect
+                  agents={agentsData ?? []}
+                  assigned={(agentId) =>
+                    Boolean(
+                      (agentsData ?? [])
+                        .find((ag) => ag.id === agentId)
+                        ?.projects?.includes(project.projectId),
+                    )
+                  }
+                  onAssign={onAssign}
+                />
+                <Button variant="ghost" size="sm" onClick={() => setEditingProject(project)}>
+                  Edit
+                </Button>
+                {confirmingId === project.projectId ? (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        remove.mutate(project.projectId, {
+                          onSuccess: () => {
+                            toast.success("Project deleted");
+                            setConfirmingId(null);
+                          },
+                          onError: (err) => {
+                            const message = err instanceof Error ? err.message : "Unknown error";
+                            const is409 =
+                              message.includes("409") ||
+                              message.toLowerCase().includes("still has");
+                            toast.error(
+                              is409
+                                ? "Cannot delete — project still has issues"
+                                : "Failed to delete project",
+                              { description: message },
+                            );
+                          },
+                        });
+                      }}
+                      disabled={remove.isPending}
+                    >
+                      Confirm
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setConfirmingId(null)}>
+                      Cancel
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setConfirmingId(project.projectId)}
+                  >
+                    Delete
+                  </Button>
+                )}
+              </ResourceCardFooter>
+            </ResourceCard>
           );
         })}
       </div>
