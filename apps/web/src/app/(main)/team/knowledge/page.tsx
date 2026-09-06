@@ -228,13 +228,11 @@ function KnowledgeDetailSheet({
 
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between gap-4">
-      <Text as="dt" className="text-(--mute)">
+    <div className="grid grid-cols-[160px_1fr] items-baseline gap-4 py-1.5">
+      <dt className="font-label-caps text-label-caps uppercase tracking-wider text-(--faint)">
         {label}
-      </Text>
-      <Text as="dd" className="truncate text-right">
-        {value}
-      </Text>
+      </dt>
+      <dd className="truncate text-right font-mono text-xs text-(--body) tabular-nums">{value}</dd>
     </div>
   );
 }

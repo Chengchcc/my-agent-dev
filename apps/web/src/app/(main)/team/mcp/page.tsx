@@ -262,7 +262,7 @@ function McpDetailSheet({
           <Text as="p" className="text-sm text-(--mute)">
             {server.transport === "sse" ? (row.url ?? "") : (row.command ?? "")}
           </Text>
-          <dl className="space-y-1 text-sm">
+          <dl className="divide-y divide-(--hairline) rounded-md border border-(--hairline) bg-(--canvas-soft) px-3 py-1">
             <DetailRow label="Transport" value={row.transport} />
             <DetailRow label="Command" value={row.command ?? "—"} />
             <DetailRow label="Args" value={(row.args ?? []).join(", ") || "—"} />
@@ -354,13 +354,11 @@ function McpDetailSheet({
 
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between gap-4">
-      <Text as="dt" className="text-(--mute)">
+    <div className="grid grid-cols-[160px_1fr] items-baseline gap-4 py-1.5">
+      <dt className="font-label-caps text-label-caps uppercase tracking-wider text-(--faint)">
         {label}
-      </Text>
-      <Text as="dd" className="truncate text-right">
-        {value}
-      </Text>
+      </dt>
+      <dd className="truncate text-right font-mono text-xs text-(--body) tabular-nums">{value}</dd>
     </div>
   );
 }
