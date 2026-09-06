@@ -3,6 +3,7 @@
 import { AlertCircle, Bot, Boxes, Link2, Plug, Power } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { AgentForm } from "@/components/AgentForm";
 import { Page, PageBody, PageHeader } from "@/components/page";
 import { KpiTile, MonoLabel, StatusPill } from "@/components/patterns";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -104,6 +105,7 @@ export default function TeamPage() {
             </StatusPill>
           ) : undefined
         }
+        actions={<AgentForm />}
       />
       <PageBody size="wide" className="space-y-4">
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">

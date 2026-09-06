@@ -285,7 +285,7 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
           if (!o) setNewName("");
         }}
       >
-        <DialogContent className="max-w-sm">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-sm font-semibold">New Workflow</DialogTitle>
           </DialogHeader>
@@ -320,33 +320,35 @@ export function WorkflowList({ definitions }: { definitions: Row[] }) {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="w-full justify-start"
+                  className="flex h-auto w-full flex-col items-start gap-0.5 px-3 py-2 text-left"
                   onClick={() => void create()}
                 >
-                  <div className="font-medium">Blank canvas</div>
-                  <div className="text-[10px] text-(--mute)">start → end, build from scratch</div>
+                  <span className="font-medium">Blank canvas</span>
+                  <span className="line-clamp-1 text-[10px] font-normal text-(--mute)">
+                    start → end, build from scratch
+                  </span>
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="w-full justify-start"
+                  className="flex h-auto w-full flex-col items-start gap-0.5 px-3 py-2 text-left"
                   onClick={() => void create("nighttime-report")}
                 >
-                  <div className="font-medium">Nightly code quality report</div>
-                  <div className="text-[10px] text-(--mute)">
+                  <span className="font-medium">Nightly code quality report</span>
+                  <span className="line-clamp-1 text-[10px] font-normal text-(--mute)">
                     Agent scans repo → report → human confirmation
-                  </div>
+                  </span>
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="w-full justify-start"
+                  className="flex h-auto w-full flex-col items-start gap-0.5 px-3 py-2 text-left"
                   onClick={() => void create("self-heal")}
                 >
-                  <div className="font-medium">Issue self-heal</div>
-                  <div className="text-[10px] text-(--mute)">
+                  <span className="font-medium">Issue self-heal</span>
+                  <span className="line-clamp-1 text-[10px] font-normal text-(--mute)">
                     Detect → auto-fix → human confirm → fork exit
-                  </div>
+                  </span>
                 </Button>
               </div>
             </div>
