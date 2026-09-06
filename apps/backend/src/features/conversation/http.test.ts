@@ -7,7 +7,6 @@ import type { ConversationService } from "./service.js";
 /** Minimal in-memory port double for the POST /api/conversations path. */
 function makeSvc() {
   const rows = new Map<string, ConversationRow>();
-  let agentId = "default";
   const port = {
     createConversation(input: { conversationId: string; agentId?: string | null }) {
       const row: ConversationRow = {
@@ -15,10 +14,13 @@ function makeSvc() {
         agentId: input.agentId ?? "default",
         hopCount: 0,
         createdAt: 0,
+        title: null,
         origin: "user",
+        forkSource: null,
+        forkFromSeq: null,
+        projectId: null,
       };
       rows.set(input.conversationId, row);
-      agentId = input.agentId ?? agentId;
       return row;
     },
     getConversation(id: string) {
@@ -37,23 +39,22 @@ function makeSvc() {
   );
 }
 
-async function post(app: Elysia, body: Record<string, unknown>) {
-  const res = await app.handle(
+function post(app: ReturnType<typeof makeSvc>, body: Record<string, unknown>) {
+  return app.handle(
     new Request("http://localhost/api/conversations", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     }),
   );
-  return { status: res.status, body: (await res.json()) as { conversationId?: string } };
 }
 
 describe("POST /api/conversations", () => {
   test("creates a new conversation on first POST", async () => {
     const app = makeSvc();
-    const r = await post(app, { conversationId: "c1", agentId: "default", origin: "workflow" });
-    expect(r.status).toBe(201);
-    expect(r.body.conversationId).toBe("c1");
+    const res = await post(app, { conversationId: "c1", agentId: "default", origin: "workflow" });
+    expect(res.status).toBe(201);
+    expect(((await res.json()) as { conversationId?: string }).conversationId).toBe("c1");
   });
 
   test("is idempotent: POSTing an existing conversationId returns 200, no dup", async () => {
@@ -69,8 +70,9 @@ describe("POST /api/conversations", () => {
       origin: "workflow",
     });
     expect(second.status).toBe(200);
-    expect(second.body.conversationId).toBe("workflow:chat:seed");
-    // exactly one row
+    expect(((await second.json()) as { conversationId?: string }).conversationId).toBe(
+      "workflow:chat:seed",
+    );
     const listRes = await app.handle(
       new Request("http://localhost/api/conversations", { method: "GET" }),
     );
@@ -80,8 +82,8 @@ describe("POST /api/conversations", () => {
 
   test("auto-generates a conversationId when omitted", async () => {
     const app = makeSvc();
-    const r = await post(app, { agentId: "default" });
-    expect(r.status).toBe(201);
-    expect(r.body.conversationId).toBeTruthy();
+    const res = await post(app, { agentId: "default" });
+    expect(res.status).toBe(201);
+    expect(((await res.json()) as { conversationId?: string }).conversationId).toBeTruthy();
   });
 });
