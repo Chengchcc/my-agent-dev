@@ -30,41 +30,49 @@ export function TimelineTransientTrace({
   // back to thinking-on-top + tools, and the text stays in MessageBubble.
   const hasOrdered = ordered && ordered.length > 0;
 
+  const thinkingBody = hasOrdered
+    ? ordered
+        .filter((b) => b.type === "thinking")
+        .map((b, i) => (
+          <div key={`${b.type}-${i}`} className="px-1 py-0.5 text-[12px] italic text-(--mute)">
+            {b.text}
+          </div>
+        ))
+    : thinking.trim() && (
+        <div className="px-1 py-0.5 text-[12px] italic text-(--mute)">{thinking}</div>
+      );
+
   return (
     <div className="mb-0.5">
-      <Collapsible open={open} onOpenChange={setOpen}>
-        <CollapsibleTrigger
-          className="flex w-full items-center gap-1.5 px-1 py-0.5 text-left
-            text-[11px] font-mono text-(--mute)
-            transition-colors hover:text-(--ink)"
-        >
-          <span className="shrink-0 text-(--primary)">{open ? "▼" : "▶"}</span>
-          <span>
-            {msgCount} messages · {tools.length} commands
-          </span>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="my-0.5 ml-1.5 flex flex-col gap-0.5 border-l border-(--hairline) py-1 pl-2">
-            {hasOrdered
-              ? ordered
-                  .filter((b) => b.type === "thinking")
-                  .map((b, i) => (
-                    <div
-                      key={`${b.type}-${i}`}
-                      className="px-1 py-0.5 text-[12px] italic text-(--mute)"
-                    >
-                      {b.text}
-                    </div>
-                  ))
-              : thinking.trim() && (
-                  <div className="px-1 py-0.5 text-[12px] italic text-(--mute)">{thinking}</div>
-                )}
-            {tools.map((tool) => (
-              <LiveToolStep key={tool.callId} tool={tool} />
-            ))}
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
+      {/* Tools render unfolded, matching the finished ToolStep rows below —
+          folding them mid-stream would make live vs settled differ. */}
+      {tools.map((tool) => (
+        <LiveToolStep key={tool.callId} tool={tool} />
+      ))}
+      {thinkingBody && (
+        <Collapsible open={open} onOpenChange={setOpen}>
+          <CollapsibleTrigger
+            className="flex w-full items-center gap-1.5 px-1 py-0.5 text-left
+              text-[11px] font-mono text-(--mute)
+              transition-colors hover:text-(--ink)"
+          >
+            <span className="shrink-0 text-(--primary)">{open ? "▼" : "▶"}</span>
+            <span>
+              {msgCount} messages{tools.length > 0 ? ` · ${tools.length} commands` : ""}
+            </span>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="my-0.5 ml-1.5 flex flex-col gap-0.5 border-l border-(--hairline) py-1 pl-2">
+              {thinkingBody}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
+      {!thinkingBody && tools.length === 0 && (
+        <div className="text-[11px] font-mono text-(--mute)">
+          {msgCount} messages · {tools.length} commands
+        </div>
+      )}
     </div>
   );
 }
