@@ -21,7 +21,7 @@ function buildComponents(tone: "default" | "muted"): Components {
   return {
     p: ({ children }) =>
       muted ? (
-        <p className="whitespace-pre-wrap wrap-break-word my-1 first:mt-0 last:mb-0 text-sm/relaxed text-(--mute)">
+        <p className="wrap-break-word my-1 first:mt-0 last:mb-0 text-sm/relaxed text-(--mute)">
           {children}
         </p>
       ) : (
