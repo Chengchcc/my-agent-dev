@@ -403,7 +403,7 @@ export function ExecutionTraceView({
             <div className="border-b p-3 text-xs">
               <div className="mb-1 font-semibold">Agent conversations</div>
               {graph.nodes
-                .filter((n) => n.type === "agent")
+                .filter((n) => n.type === "agent" && nodeRuns.some((r) => r.nodeId === n.id))
                 .map((n) => (
                   <Link
                     key={n.id}
@@ -414,6 +414,13 @@ export function ExecutionTraceView({
                     <span>View →</span>
                   </Link>
                 ))}
+              {graph.nodes.filter(
+                (n) => n.type === "agent" && !nodeRuns.some((r) => r.nodeId === n.id),
+              ).length > 0 && (
+                <p className="pt-1 text-[10px] text-(--faint)">
+                  Some agent nodes never ran (not reachable) — no conversation.
+                </p>
+              )}
             </div>
           )}
           <div className="p-3 text-xs">

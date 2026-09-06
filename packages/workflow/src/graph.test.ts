@@ -118,4 +118,56 @@ describe("graph", () => {
     expect(result.input).toEqual({ t: "trigger", z: "store", x: 1, y: "b" });
     expect(result.provenance).toEqual({ t: "trigger", z: "store", x: "a", y: "b" });
   });
+
+  test("human gate answers flatten to output.<field> for routing", () => {
+    const gateDef = parseWorkflow({
+      version: 1,
+      id: "wf",
+      nodes: [
+        { id: "start", type: "start" },
+        { id: "approve", type: "human", question: "send?", form: { approve: { type: "enum" } } },
+        { id: "success", type: "end", status: "success" },
+        { id: "dismissed", type: "end", status: "dismissed" },
+      ],
+      edges: [
+        { from: "start", to: "approve" },
+        {
+          from: "approve",
+          to: "success",
+          when: { "==": [{ var: "approve.output.approve" }, "yes"] },
+        },
+        {
+          from: "approve",
+          to: "dismissed",
+          when: { "==": [{ var: "approve.output.approve" }, "no"] },
+        },
+      ],
+    });
+    const yes = [
+      { nodeId: "start", order: 0, routedTo: ["approve"] },
+      {
+        nodeId: "approve",
+        order: 1,
+        output: {
+          answers: [
+            { id: "approve", selectedValues: ["yes"] },
+            { id: "comment", selectedValues: [], freeText: "ok" },
+          ],
+        },
+        routedTo: [],
+      },
+    ];
+    expect(routeOutgoing("approve", gateDef, yes, {})).toEqual(["success"]);
+
+    const no = [
+      { nodeId: "start", order: 0, routedTo: ["approve"] },
+      {
+        nodeId: "approve",
+        order: 1,
+        output: { answers: [{ id: "approve", selectedValues: ["no"] }] },
+        routedTo: [],
+      },
+    ];
+    expect(routeOutgoing("approve", gateDef, no, {})).toEqual(["dismissed"]);
+  });
 });

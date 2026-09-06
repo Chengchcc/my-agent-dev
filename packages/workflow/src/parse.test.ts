@@ -87,4 +87,62 @@ describe("parseWorkflow", () => {
       form: { level: { type: "enum", options: ["a", "b"] } },
     });
   });
+
+  test("flags a node not reachable from start (dangling)", () => {
+    expect(() =>
+      parseWorkflow({
+        version: 1,
+        id: "wf",
+        nodes: [
+          { id: "start", type: "start" },
+          { id: "a", type: "script", code: "x" },
+          { id: "orphan", type: "script", code: "y" },
+          { id: "done", type: "end", status: "success" },
+        ],
+        edges: [
+          { from: "start", to: "a" },
+          { from: "a", to: "done" },
+        ],
+      }),
+    ).toThrow(/orphan.*not reachable from start/);
+  });
+
+  test("flags an edge when referencing a non-existent output field", () => {
+    expect(() =>
+      parseWorkflow({
+        version: 1,
+        id: "wf",
+        nodes: [
+          { id: "start", type: "start" },
+          {
+            id: "h",
+            type: "human",
+            form: { action: { type: "enum", options: ["yes", "no"] } },
+          },
+          { id: "done", type: "end", status: "success" },
+        ],
+        edges: [
+          { from: "start", to: "h" },
+          { from: "h", to: "done", when: { "==": [{ var: "h.output.actionn" }, "yes"] } },
+        ],
+      }),
+    ).toThrow(/h.output.actionn.*no output field/);
+  });
+
+  test("accepts a human gate edge that references a real form field", () => {
+    const def = parseWorkflow({
+      version: 1,
+      id: "wf",
+      nodes: [
+        { id: "start", type: "start" },
+        { id: "h", type: "human", form: { action: { type: "enum", options: ["yes", "no"] } } },
+        { id: "done", type: "end", status: "success" },
+      ],
+      edges: [
+        { from: "start", to: "h" },
+        { from: "h", to: "done", when: { "==": [{ var: "h.output.action" }, "yes"] } },
+      ],
+    });
+    expect(def.edges).toHaveLength(2);
+  });
 });

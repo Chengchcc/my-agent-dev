@@ -49,12 +49,37 @@ export function topoSort(def: WorkflowDefinition): string[] {
   return result;
 }
 
+/** A human gate's completed output is `{answers:[{id,selectedValues,freeText},...]}`
+ *  (what the web form submits). The DSL routes on `node.output.<formField>`
+ *  (e.g. `approve.output.approve`, `confirm.output.action`), so flatten each
+ *  answer to `output[id] = selectedValues[0] ?? freeText` at ROUTE time. The
+ *  stored node-run output keeps the original `answers` shape untouched. */
+function normalizeNodeOutput(
+  output: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!output || !Array.isArray(output.answers)) return output;
+  const merged: Record<string, unknown> = { ...output };
+  for (const item of output.answers as Array<{
+    id?: string;
+    selectedValues?: string[];
+    freeText?: string;
+  }>) {
+    if (!item?.id) continue;
+    const val =
+      item.selectedValues && item.selectedValues.length > 0
+        ? (item.selectedValues[0] as string)
+        : (item.freeText ?? "");
+    merged[item.id] = val;
+  }
+  return merged;
+}
+
 function evalData(
   nodeId: string,
   output: Record<string, unknown> | undefined,
   store: Record<string, unknown>,
 ): unknown {
-  return { store, [nodeId]: { output } };
+  return { store, [nodeId]: { output: normalizeNodeOutput(output) } };
 }
 
 /** Compute a completed node's routed targets at completion time.

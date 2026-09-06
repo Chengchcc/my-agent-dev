@@ -179,6 +179,87 @@ function parseInputHint(raw: unknown, label: string, issues: string[]): InputHin
   return out;
 }
 
+/** Collect every JSONLogic `var` path in a rule (e.g. `approve.output.approve`).
+ *  Walks arrays + single-key objects; skips plain-value leaves. */
+function collectVarPaths(rule: unknown, out: string[] = []): string[] {
+  if (Array.isArray(rule)) {
+    for (const item of rule) collectVarPaths(item, out);
+    return out;
+  }
+  if (!isRecord(rule)) return out;
+  const entries = Object.entries(rule);
+  if (entries.length === 1 && entries[0]![0] === "var") {
+    const rawArgs = entries[0]![1];
+    if (typeof rawArgs === "string") out.push(rawArgs);
+    else if (Array.isArray(rawArgs) && typeof rawArgs[0] === "string") out.push(rawArgs[0]);
+    return out;
+  }
+  for (const [, v] of entries) collectVarPaths(v, out);
+  return out;
+}
+
+/** The set of top-level output field names a node exposes to downstream
+ *  `node.output.<field>` references. Human gates expose their form field
+ *  names (the answers are flattened to `output[id]`); script/agent expose
+ *  their declared `output` hint keys; start/end expose none. */
+function nodeOutputFields(node: WorkflowNode): Set<string> {
+  if (node.type === "human" && node.form) return new Set(Object.keys(node.form));
+  if ((node.type === "script" || node.type === "agent") && node.output)
+    return new Set(node.output.map((f) => f.key));
+  return new Set();
+}
+
+/** Nodes reachable from a single start via the edge graph. A dangling node
+ *  (no in-edge, no path from start) never runs — surface it at parse time. */
+function reachableNodes(nodes: WorkflowNode[], edges: WorkflowDefinition["edges"]): Set<string> {
+  const reachable = new Set<string>();
+  const start = nodes.find((n) => n.type === "start");
+  if (!start) return reachable;
+  const queue = [start.id];
+  reachable.add(start.id);
+  while (queue.length > 0) {
+    const cur = queue.pop()!;
+    for (const e of edges) {
+      if (e.from === cur && !reachable.has(e.to)) {
+        reachable.add(e.to);
+        queue.push(e.to);
+      }
+    }
+  }
+  return reachable;
+}
+
+/** Validate the edges' `when` JSONLogic `var` references against the output
+ *  fields of the referenced node. Catches routes that reference fields the
+ *  node doesn't produce (e.g. a typo, or a missing human form field) — the
+ *  runtime would otherwise evaluate false forever and deadlock. */
+function validateEdgeWhen(
+  edges: WorkflowDefinition["edges"],
+  nodeById: Map<string, WorkflowNode>,
+  issues: string[],
+): void {
+  for (const e of edges) {
+    if (e.when === undefined) continue;
+    for (const path of collectVarPaths(e.when)) {
+      const m = /^([A-Za-z0-9_-]+)\.output\.([A-Za-z0-9_-]+)$/.exec(path);
+      if (!m) continue; // store. / input. / trigger. / node.results.* — dynamic, skip
+      const nodeId = m[1]!;
+      const field = m[2]!;
+      const node = nodeById.get(nodeId);
+      if (!node) {
+        issues.push(`edge "${e.from}->${e.to}" references unknown node "${nodeId}"`);
+        continue;
+      }
+      const fields = nodeOutputFields(node);
+      if (fields.size > 0 && !fields.has(field)) {
+        issues.push(
+          `edge "${e.from}->${e.to}" when ${path}: node "${nodeId}" has no output field "${field}"`,
+        );
+      }
+    }
+  }
+}
+
 export function parseWorkflow(raw: unknown): WorkflowDefinition {
   const issues: string[] = [];
   if (!isRecord(raw)) throw new WorkflowParseError(["workflow must be an object"]);
@@ -223,6 +304,16 @@ export function parseWorkflow(raw: unknown): WorkflowDefinition {
     if (!seen.has(e.from)) issues.push(`edge.from "${e.from}" is not a node id`);
     if (!seen.has(e.to)) issues.push(`edge.to "${e.to}" is not a node id`);
   }
+  // A node with no path from start never runs (its edges still exist but no
+  // completion will ever reach it) — flag dangling nodes so the author fixes
+  // the topology instead of shipping a dead branch.
+  const reachable = reachableNodes(nodes, edges);
+  for (const n of nodes) {
+    if (n.type !== "start" && !reachable.has(n.id))
+      issues.push(`node "${n.id}" is not reachable from start (no incoming path)`);
+  }
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  validateEdgeWhen(edges, nodeById, issues);
   const parsedWfInput = parseInputHint(raw.input, "input", issues);
   const input: InputHint = parsedWfInput ?? [];
   const meta: WorkflowMeta = {};
