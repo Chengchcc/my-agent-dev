@@ -8,13 +8,15 @@ import * as schema from "../db/schema.js";
 export function openDb(dbPath: string): Database {
   // Ensure parent directory exists (SQLite doesn't create it)
   const dir = path.dirname(dbPath);
+  const dirExisted = existsSync(dir);
   mkdirSync(dir, { recursive: true });
 
   // M17: provider keys and session data live in this DB in plaintext.
   // Owner-only on dir + files, every open (fixes legacy 0644 files too).
-  // In-memory DBs (":memory:", tests) must not chmod the process cwd.
+  // In-memory DBs (":memory:", tests) must not chmod the process cwd, and
+  // pre-existing dirs (e.g. /tmp) are never touched.
   const inMemory = dbPath === ":memory:";
-  if (!inMemory) {
+  if (!inMemory && !dirExisted) {
     chmodSync(dir, 0o700);
   }
 
