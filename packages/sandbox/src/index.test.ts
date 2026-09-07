@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { runInSandbox } from "./index.js";
 
 test("runs a script and returns its output", async () => {
@@ -70,4 +73,45 @@ test("minimal env — no host env leakage by default", async () => {
     env: {},
   });
   expect(r.output).toEqual({ hasSecret: false });
+});
+
+const HAS_BWRAP = Bun.which("bwrap") !== null;
+
+test("isolation cuts network and hides denied dirs (H2)", async () => {
+  if (!HAS_BWRAP) return;
+  const secretDir = mkdtempSync(join(tmpdir(), "sbx-secret-"));
+  writeFileSync(join(secretDir, "secret.txt"), "topsecret");
+  const r = await runInSandbox({
+    code: `export default async () => {
+  let netBlocked = false;
+  try {
+    await fetch("http://example.com/", { signal: AbortSignal.timeout(2_000) });
+  } catch {
+    netBlocked = true;
+  }
+  let readBlocked = false;
+  try {
+    await Bun.file(${JSON.stringify(join(secretDir, "secret.txt"))}).text();
+  } catch {
+    readBlocked = true;
+  }
+  return { netBlocked, readBlocked };
+};`,
+    isolation: { noNetwork: true, denyReadDirs: [secretDir] },
+    timeoutMs: 20_000,
+  });
+  expect(r.exitCode).toBe(0);
+  expect(r.output).toEqual({ netBlocked: true, readBlocked: true });
+  rmSync(secretDir, { recursive: true, force: true });
+}, 30_000);
+
+test("isolation wrapper does not disturb normal execution (H2)", async () => {
+  if (!HAS_BWRAP) return;
+  const r = await runInSandbox({
+    code: `export default async () => ({ echo: 41 + 1 });`,
+    isolation: { noNetwork: true, denyReadDirs: ["/nonexistent-h2"] },
+    timeoutMs: 20_000,
+  });
+  expect(r.exitCode).toBe(0);
+  expect(r.output).toEqual({ echo: 42 });
 });

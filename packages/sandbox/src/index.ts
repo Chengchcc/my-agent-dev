@@ -12,7 +12,7 @@
  *  hostile script can still touch the host filesystem like any spawned
  *  process. Container-level isolation is a deliberate non-goal here. */
 
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -29,6 +29,18 @@ export interface SandboxInput {
   cwd?: string;
   /** Keep the working dir after the run (default: removed). */
   keepCwd?: boolean;
+  /** H2: OS-level isolation knobs. When requested and a wrapper tool is
+   *  available (Linux: bwrap, macOS: sandbox-exec) the subprocess runs
+   *  inside it; without a tool the run falls back to process isolation
+   *  only, with a warning naming the ceiling. */
+  isolation?: {
+    /** Cut all network access (unshare-net / deny network*). */
+    noNetwork?: boolean;
+    /** Directories the script must not read: overlaid with an empty tmpfs
+     *  (bwrap) or denied by profile (sandbox-exec). Non-existent dirs are
+     *  skipped. */
+    denyReadDirs?: readonly string[];
+  };
 }
 
 export interface SandboxResult {
@@ -75,6 +87,32 @@ try {
   process.exit(1);
 }
 `;
+
+function bwrapArgv(base: readonly string[], isolation: SandboxInput["isolation"]): string[] {
+  const args = ["bwrap", "--dev-bind", "/", "/"];
+  if (isolation?.noNetwork) args.push("--unshare-net");
+  for (const d of isolation?.denyReadDirs ?? []) {
+    // bwrap needs an existing mountpoint; an empty tmpfs over the dir
+    // shadows its content (reads AND writes).
+    if (existsSync(d)) args.push("--tmpfs", d);
+  }
+  args.push(...base);
+  return args;
+}
+
+function sandboxExecArgv(
+  base: readonly string[],
+  dir: string,
+  isolation: SandboxInput["isolation"],
+): string[] {
+  const denies = (isolation?.denyReadDirs ?? [])
+    .map((d) => `(deny file-read-data (subpath "${d}"))`)
+    .join("");
+  const net = isolation?.noNetwork ? "(deny network*)" : "";
+  const profilePath = join(dir, "__sandbox_profile.sb");
+  writeFileSync(profilePath, `(version 1)(allow default)${net}${denies}`);
+  return ["sandbox-exec", "-f", profilePath, ...base];
+}
 
 /** Post-exit drain grace: fires only when the pipe is still open (an
  *  orphaned grandchild holds it) — buffered data resolves instantly. */
@@ -158,18 +196,37 @@ export async function runInSandbox(input: SandboxInput): Promise<SandboxResult> 
   // script that traps SIGTERM needs a SIGKILL escalation (a lone
   // proc.kill() SIGTERM left executions stuck in "running" forever).
   const hasSetsid = Bun.which("setsid") !== null;
-  const proc = Bun.spawn(
-    hasSetsid
-      ? ["setsid", "bun", "run", join(dir, "__sandbox_main.ts")]
-      : ["bun", "run", join(dir, "__sandbox_main.ts")],
-    {
-      cwd: dir,
-      env: { ...BASE_ENV, ...(input.env ?? {}) },
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe",
-    },
-  );
+  // H2: wrap the script process when isolation is requested and a wrapper
+  // tool exists for the platform; otherwise fall back to process isolation
+  // only, with a warning naming the ceiling.
+  const isolation = input.isolation;
+  const wantsNetworkCut = isolation?.noNetwork === true;
+  const wantsDenyRead = (isolation?.denyReadDirs?.length ?? 0) > 0;
+  const isolationRequested = wantsNetworkCut || wantsDenyRead;
+  const onLinux = process.platform === "linux";
+  const onMacos = process.platform === "darwin";
+  const hasBwrap = Bun.which("bwrap") !== null;
+  const hasSandboxExec = Bun.which("sandbox-exec") !== null;
+  let baseArgv = ["bun", "run", join(dir, "__sandbox_main.ts")];
+  if (isolationRequested) {
+    if (onLinux && hasBwrap) {
+      baseArgv = bwrapArgv(baseArgv, isolation);
+    } else if (onMacos && hasSandboxExec) {
+      baseArgv = sandboxExecArgv(baseArgv, dir, isolation);
+    } else {
+      console.warn(
+        "[sandbox] isolation requested but no bwrap/sandbox-exec available — running with process isolation only",
+      );
+    }
+  }
+  const argv = hasSetsid ? ["setsid", ...baseArgv] : baseArgv;
+  const proc = Bun.spawn(argv, {
+    cwd: dir,
+    env: { ...BASE_ENV, ...(input.env ?? {}) },
+    stdin: "pipe",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
   proc.stdin!.write(JSON.stringify(input.input ?? {}));
   proc.stdin!.end();
   const exited = proc.exited;
