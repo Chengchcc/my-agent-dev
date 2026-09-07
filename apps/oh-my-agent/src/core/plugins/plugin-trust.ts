@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, readlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { agentDir } from "../session/session-file.js";
 
@@ -14,21 +14,28 @@ function trustedPath(): string {
   return join(agentDir(), "trusted-plugins.json");
 }
 
-/** Directory hash (spec): recursive sha256 over sorted (relpath, fileHash)
- *  pairs, excluding node_modules. */
+/** Directory hash: recursive sha256 over sorted (relpath, fileHash) pairs.
+ *  EVERY non-directory entry participates — regular files by content,
+ *  symlinks by link target, anything else by marker — because loadPluginCode
+ *  imports whatever the manifest entry points at; anything excluded from the
+ *  digest is a mutation channel that keeps a stale approval "green"
+ *  (symlinks/node_modules gap proven 2026-09-07). */
 export function computePluginHash(pluginRoot: string): string {
   const files: Array<{ rel: string; fileHash: string }> = [];
   const walk = (dir: string, prefix: string) => {
     for (const ent of readdirSync(dir, { withFileTypes: true })) {
-      if (ent.name === "node_modules") continue;
       const full = join(dir, ent.name);
       const rel = prefix ? `${prefix}/${ent.name}` : ent.name;
       if (ent.isDirectory()) walk(full, rel);
-      else if (ent.isFile()) {
+      else if (ent.isSymbolicLink()) {
+        files.push({ rel, fileHash: `link:${readlinkSync(full)}` });
+      } else if (ent.isFile()) {
         files.push({
           rel,
           fileHash: createHash("sha256").update(readFileSync(full)).digest("hex"),
         });
+      } else {
+        files.push({ rel, fileHash: `special:${ent.name}` });
       }
     }
   };

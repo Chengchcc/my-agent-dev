@@ -1,3 +1,4 @@
+import { childEnv } from "@chengchenccc/agent-contract";
 import type { Tool } from "@chengchenccc/message";
 import type { BashSandbox } from "./bash-sandbox.js";
 import { NullBashSandbox } from "./bash-sandbox.js";
@@ -83,7 +84,16 @@ export function createBashTool(opts: {
       const upper = maxToolTimeoutMs();
       const cap = upper > 0 ? Math.min(upper, 600_000) : 600_000;
       const clamped = Math.min(Math.max(timeout, 1), cap);
-      const proc = launcher.spawn(command, { cwd: validatedCwd });
+      // Strip credential-shaped vars from the inherited env: the bash child
+      // needs tooling (PATH/HOME/LANG/TZ), not provider keys or the per-run
+      // product-tools token. Full inheritance let one `env`/`printenv` read
+      // every secret the oma process holds, voiding the childEnv allowlist
+      // and stderr redaction above it.
+      const BASH_ENV_DENY = /API_KEY|AUTH_TOKEN|_TOKEN$|_SECRET$|PASSWORD|PASSWD/;
+      const bashEnv = Object.fromEntries(
+        Object.entries(childEnv()).filter(([k]) => !BASH_ENV_DENY.test(k)),
+      );
+      const proc = launcher.spawn(command, { cwd: validatedCwd, env: bashEnv });
 
       // Kill the process group on timeout OR abort signal.
       const killGroup = () => proc.kill();

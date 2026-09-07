@@ -52,7 +52,10 @@ export function createGrepTool(opts: { workspaceRoot: string }): Tool {
 
       const args = ["rg", "-n", "--color=never"];
       if (glob) args.push("--glob", glob);
-      args.push(pattern, validatedPath);
+      // "-e" + "--": the model-controlled pattern must never be parsed as an
+      // rg option (e.g. --pre=<cmd> executes a shell per file — an ungated
+      // RCE); the path likewise must not be option-consumed.
+      args.push("-e", pattern, "--", validatedPath);
 
       let proc: ReturnType<typeof Bun.spawn>;
       try {

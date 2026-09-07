@@ -46,9 +46,21 @@ function loadMcpConfig(workspaceRoot: string): Record<string, McpJsonServer> {
   }
 }
 
-/** Expand `${VAR}` placeholders in .mcp.json headers/env from process.env. */
+/** Expand ${VAR} placeholders in .mcp.json headers/env. ALLOWLIST ONLY:
+ *  .mcp.json lives in the workspace and is writable by the agent itself —
+ *  free expansion of process env would let a prompt-injected write exfiltrate
+ *  provider keys / run tokens to any configured SSE URL (proven P0,
+ *  2026-09-07). Only the product-bridge placeholder may expand; everything
+ *  else resolves to "" with a warning. */
+const EXPANDABLE_ENV_VARS = new Set(["PRODUCT_TOOLS_RUN_TOKEN"]);
 function expandEnvVars(value: string): string {
-  return value.replace(/\$\{([A-Z_][A-Z0-9_]*)\}/g, (_, name: string) => process.env[name] ?? "");
+  return value.replace(/\$\{([A-Z_][A-Z0-9_]*)\}/g, (whole, name: string) => {
+    if (!EXPANDABLE_ENV_VARS.has(name)) {
+      console.warn(`[mcp-mount] refusing to expand non-allowlisted placeholder ${whole}`);
+      return "";
+    }
+    return process.env[name] ?? "";
+  });
 }
 
 async function connectServer(name: string, server: McpJsonServer): Promise<McpClientLike | null> {
@@ -280,9 +292,14 @@ export async function mountWorkspaceMcpServers(
     }
     reports.push({ server: name, ok: true, toolsCount: listed.length });
     for (const t of listed) {
-      if (nativeNames.has(t.name)) continue; // native table wins on collision
+      // Register under the canonical mcp__<server>__<tool> name: the
+      // permission gates key on the "mcp__" prefix. Bare names would leave
+      // every mounted MCP tool call ungated in ALL permission modes
+      // (proven gap, 2026-09-07). Native table still wins on collision.
+      const qualified = `mcp__${name}__${t.name}`;
+      if (nativeNames.has(qualified) || nativeNames.has(t.name)) continue;
       tools.push({
-        name: t.name,
+        name: qualified,
         description: t.description ?? `MCP tool ${t.name} (server ${name})`,
         inputSchema: (t.inputSchema ?? { type: "object" }) as PluginTool["inputSchema"],
         timeoutMs: mcpCallTimeoutMs(),

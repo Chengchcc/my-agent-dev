@@ -583,12 +583,26 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   // permission classifier; write/edit skip it (workspace-sandboxed, the CC
   // "working-dir edits auto-approve" precedent). Absent mode = ungated
   // (legacy standalone default, unchanged).
-  const HIGH_RISK_NATIVE_TOOLS = new Set(["bash", "write", "edit", "create_file", "mcp__"]);
+  const HIGH_RISK_NATIVE_TOOLS: Record<string, true> = {
+    bash: true,
+    eval: true,
+    write: true,
+    edit: true,
+    create_file: true,
+  };
+  // Product-owned mounts (workspace-bridge: features.ts names them
+  // "product-tools" / "knowledge") are consented-by-design read/context
+  // surfaces with their own per-run auth — never gate them, or ask/deny
+  // modes would demand a human click per history_* call.
+  const PRODUCT_MOUNTED_PREFIXES = ["mcp__product-tools__", "mcp__knowledge__"];
+  const isProductMounted = (toolName: string): boolean =>
+    PRODUCT_MOUNTED_PREFIXES.some((p) => toolName.startsWith(p));
   const classifierGated = (toolName: string): boolean =>
-    toolName === "bash" ||
-    toolName === "eval" ||
-    toolName.startsWith("mcp__") ||
-    pluginCodeToolNames.has(toolName);
+    !isProductMounted(toolName) &&
+    (toolName === "bash" ||
+      toolName === "eval" ||
+      toolName.startsWith("mcp__") ||
+      pluginCodeToolNames.has(toolName));
   /** Escalated (human-reviewed) actions this Run, keyed toolName+input.
    *  A classifier block escalates ONCE per unique action; identical repeats
    *  deny silently (card-spam guard, CC's repeated-block discipline). */
@@ -700,7 +714,9 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
           };
         }
       }
-      const isHighRisk = HIGH_RISK_NATIVE_TOOLS.has(toolName) || toolName.startsWith("mcp__");
+      const isHighRisk =
+        !isProductMounted(toolName) &&
+        (HIGH_RISK_NATIVE_TOOLS[toolName] === true || toolName.startsWith("mcp__"));
       if (!isHighRisk) return undefined;
       if (deps.permissionMode === "deny") {
         return { block: true, reason: `${toolName}: blocked by permissionMode=deny` };
@@ -712,18 +728,38 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
           reason: `${toolName}: approval required but no pipeline configured`,
         };
       }
-      const verdict = await withApprovalDeadline(
-        deps.approvalHandler({
-          callId: "",
-          toolName,
-          input,
-          source: "permission",
-          // BashSandbox design P4: bash approvals are unsandboxed fallbacks
-          // until an OS sandbox is injected (only Null exists today).
-          ...(toolName === "bash" ? { sandboxed: false } : {}),
-        }),
-        approvalTimeoutMs(),
-      );
+      // Fail-closed: an approvalHandler crash (overlay, wire error) must block
+      // the tool, not fall through to the loop's catch{} = execute. This is
+      // the same discipline the auto branch below/above enforces.
+      const approvalInput: {
+        callId: string;
+        toolName: string;
+        input: unknown;
+        source: "permission";
+        sandboxed?: boolean;
+      } = {
+        callId: "",
+        toolName,
+        input,
+        source: "permission",
+      };
+      // BashSandbox design P4: bash approvals are unsandboxed fallbacks
+      // until an OS sandbox is injected (only Null exists today).
+      if (toolName === "bash") approvalInput.sandboxed = false;
+      let verdict: { decision: string; reason?: string };
+      try {
+        verdict = await withApprovalDeadline(
+          deps.approvalHandler(approvalInput),
+          approvalTimeoutMs(),
+        );
+      } catch (err) {
+        return {
+          block: true,
+          reason: `${toolName}: approval pipeline error — ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        };
+      }
       if (verdict.decision === "deny") {
         return {
           block: true,

@@ -64,11 +64,14 @@ export function createEvalTool(_opts: { workspaceRoot: string }): Tool {
         return { content: "eval requires non-empty code", isError: true };
       }
       if (signal?.aborted) return { content: "aborted", isError: true };
+      // Model-controlled timeout gets a ceiling, aligned with bash's clamp —
+      // an unbounded timeout (1e9) parks a sandbox slot indefinitely.
+      const clampedTimeout = Math.min(Math.max(Number(timeout) || 30_000, 1_000), 600_000);
       try {
         const r = await runInSandbox({
           code,
           input: ctxInput ?? {},
-          timeoutMs: timeout,
+          timeoutMs: clampedTimeout,
           keepCwd: keepWorkspace,
         });
         const parts: string[] = [];

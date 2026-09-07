@@ -1,5 +1,5 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fetchGitSourceSync } from "@chengchenccc/source-fetch";
 import { agentDir } from "../session/session-file.js";
 
@@ -358,14 +358,32 @@ export function installPlugin(
   const manifest = loadMarketplaceManifest(marketplace.root);
   const entry = manifest?.plugins.find((p) => p.name === pluginName);
   if (!entry) return { ok: false, error: `plugin not found: ${pluginName}` };
-  const sourceRoot = join(marketplace.root, entry.path);
+  // Manifest fields are remote content: entry.name/path and the ref's plugin
+  // segment must be bare relative names whose resolution stays inside the
+  // marketplace root / plugins root — otherwise a crafted marketplace.json
+  // turns install (cpSync) and uninstall (rmSync) into arbitrary
+  // copy/delete primitives.
+  const PLUGIN_SEGMENT_RE = /^[A-Za-z0-9._-]+$/;
+  if (!PLUGIN_SEGMENT_RE.test(pluginName) || pluginName.startsWith(".")) {
+    return { ok: false, error: `unsafe plugin name: ${pluginName}` };
+  }
+  // Claude catalog normalization yields "/demo"; strip any leading slashes so
+  // resolve() cannot reset above the marketplace root.
+  const relPath = entry.path.replace(/^\/+/, "");
+  const sourceRoot = resolve(marketplace.root, relPath);
+  if (!sourceRoot.startsWith(resolve(marketplace.root))) {
+    return { ok: false, error: `unsafe plugin path: ${entry.path}` };
+  }
   const pluginManifest = loadPluginManifest(sourceRoot);
   if (!pluginManifest) return { ok: false, error: `no plugin.json in ${sourceRoot}` };
 
-  const installRoot =
-    scope === "user"
-      ? join(agentDir(), "plugins", pluginName)
-      : join(workspaceRoot, ".oma", "plugins", pluginName);
+  const pluginsBase =
+    scope === "user" ? join(agentDir(), "plugins") : join(workspaceRoot, ".oma", "plugins");
+  const installRoot = join(pluginsBase, pluginName);
+  if (!resolve(installRoot).startsWith(resolve(pluginsBase))) {
+    return { ok: false, error: `unsafe plugin name: ${pluginName}` };
+  }
+
   if (existsSync(installRoot)) rmSync(installRoot, { recursive: true, force: true });
   mkdirSync(join(installRoot, ".."), { recursive: true });
   cpSync(sourceRoot, installRoot, { recursive: true });

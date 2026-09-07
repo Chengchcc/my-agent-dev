@@ -115,7 +115,7 @@ describe("workspace .mcp.json standalone trust gate", () => {
       await rt2.close();
       expect(out2.status).toBe("completed");
       const table2 = await Bun.file(record2).text();
-      expect(table2).toContain(`"echo"`);
+      expect(table2).toContain(`"mcp__echo-server__echo"`);
     } finally {
       delete process.env.OMA_FAKE_PROVIDER;
       delete process.env.OMA_FAKE_TOOLS_RECORD;

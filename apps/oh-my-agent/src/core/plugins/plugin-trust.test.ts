@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { computePluginHash, readTrustedPlugins, trustPlugin } from "./plugin-trust.js";
@@ -15,13 +15,19 @@ function setup(): { agent: string; pluginRoot: string } {
 }
 
 describe("plugin trust record", () => {
-  test("hash covers files but skips node_modules; content change changes hash", () => {
+  test("hash covers everything incl. node_modules and symlinks; any change re-untrusts", () => {
     const { agent, pluginRoot } = setup();
     try {
       const h1 = computePluginHash(pluginRoot);
       expect(h1.startsWith("sha256:")).toBe(true);
+      // node_modules participates: a dep swap must invalidate the approval
+      // (loadPluginCode can import from it).
       writeFileSync(join(pluginRoot, "node_modules", "dep", "y.js"), "y");
-      expect(computePluginHash(pluginRoot)).toBe(h1);
+      expect(computePluginHash(pluginRoot)).not.toBe(h1);
+      // A symlink smuggles out-of-root code into the import path — it must
+      // change the hash too.
+      symlinkSync("/tmp", join(pluginRoot, "smuggled"));
+      expect(computePluginHash(pluginRoot)).not.toBe(h1);
       writeFileSync(join(pluginRoot, "extra.ts"), "x");
       expect(computePluginHash(pluginRoot)).not.toBe(h1);
     } finally {

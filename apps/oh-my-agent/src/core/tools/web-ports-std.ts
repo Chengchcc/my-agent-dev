@@ -1,4 +1,10 @@
-import { assertSafeUrl, FETCH_TIMEOUT_MS, MAX_REDIRECTS, UrlGuardError } from "./url-guard.js";
+import {
+  assertSafeUrl,
+  assertSafeUrlDeep,
+  FETCH_TIMEOUT_MS,
+  MAX_REDIRECTS,
+  UrlGuardError,
+} from "./url-guard.js";
 import type { WebFetchPort, WebSearchPort } from "./web-ports.js";
 
 /** Max bytes read from a fetched page (fetch port is heavier than the
@@ -34,7 +40,7 @@ function htmlToText(html: string): string {
 export function createStdWebFetchPort(): WebFetchPort {
   return {
     async fetch(url, signal) {
-      let current = assertSafeUrl(url).toString();
+      let current = (await assertSafeUrlDeep(url)).toString();
       for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
         const resp = await fetch(current, {
           redirect: "manual",

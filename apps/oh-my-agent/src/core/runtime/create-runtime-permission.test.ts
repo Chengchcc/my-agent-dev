@@ -233,10 +233,12 @@ test("injected MCP todo_write wins over native todo (backend-injected priority)"
   const savedFake = process.env.OMA_FAKE_PROVIDER;
   const savedTool = process.env.OMA_FAKE_TOOL;
   process.env.OMA_FAKE_PROVIDER = "1";
-  // Model calls todo_write; the MCP server (echo fixture via .mcp.json)
-  // provides it, so native todo must NOT be installed — the call lands on
-  // the MCP tool (content "ok:todo_write"), and no .oma/todo.json exists.
-  process.env.OMA_FAKE_TOOL = JSON.stringify([{ name: "todo_write", input: { items: [] } }]);
+  // Model calls the mounted MCP tool by its qualified mcp__ name; the echo
+  // fixture (via .mcp.json) answers (content "ok:todo_write") and no
+  // .oma/todo.json is written — the call never reaches native todo.
+  process.env.OMA_FAKE_TOOL = JSON.stringify([
+    { name: "mcp__echo-server__todo_write", input: { items: [] } },
+  ]);
   const ws = mkdtempSync(join(tmpdir(), "oma-todo-mcp-"));
   try {
     process.env.MCP_ECHO_TOOLS = "todo_write";

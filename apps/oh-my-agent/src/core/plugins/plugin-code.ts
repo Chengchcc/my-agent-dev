@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { PluginHooks, PluginTool } from "../runtime/plugin.js";
@@ -37,6 +38,20 @@ function isPluginToolLike(v: unknown): v is PluginTool {
  *  semantics — a broken plugin must never fail the Run). */
 export async function loadPluginCode(root: string, entry: string): Promise<PluginCodeResult> {
   const file = join(root, entry);
+  // The trusted hash covers the plugin ROOT's tree; an entry that escapes it
+  // (symlink or ../) would execute code the approval never saw. Fail closed.
+  try {
+    const rootReal = realpathSync(root);
+    if (!realpathSync(file).startsWith(rootReal)) {
+      return { ok: false, warnings: [], error: `${entry}: entry escapes plugin root` };
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      warnings: [],
+      error: `${entry}: cannot resolve (${err instanceof Error ? err.message : String(err)})`,
+    };
+  }
   let mod: Record<string, unknown>;
   try {
     // Bun-native dynamic import: TS transpiles natively, no jiti (spec).
