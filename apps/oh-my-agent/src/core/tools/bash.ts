@@ -25,6 +25,24 @@ function maxToolTimeoutMs(): number {
   return envMs("OMA_MAX_TOOL_TIMEOUT_MS", 0);
 }
 
+/** M10: cap captured output — a runaway `yes` must OOM neither the child
+ *  nor this process. Streams to onOutput keep flowing; accumulation stops. */
+const MAX_OUTPUT_BYTES = 10 * 1024 * 1024;
+
+async function cappedText(stream: ReadableStream<Uint8Array>): Promise<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let out = "";
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total <= MAX_OUTPUT_BYTES) out += decoder.decode(value, { stream: true });
+  }
+  return total > MAX_OUTPUT_BYTES ? `${out}\n[output truncated at ${MAX_OUTPUT_BYTES} bytes]` : out;
+}
+
 export function createBashTool(opts: {
   workspaceRoot: string;
   /** Launch strategy; default Null = current unconstrained behavior. */
@@ -101,21 +119,28 @@ export function createBashTool(opts: {
       const onAbort = () => killGroup();
       if (signal?.aborted) killGroup();
       signal?.addEventListener("abort", onAbort, { once: true });
-
       try {
-        const stderrPromise = new Response(proc.stderr).text();
+        const stderrPromise = cappedText(proc.stderr);
         let stdout = "";
         if (options?.onOutput) {
           const reader = proc.stdout.getReader();
+          const decoder = new TextDecoder();
+          let total = 0;
           for (;;) {
             const { done, value } = await reader.read();
             if (done) break;
-            const chunk = new TextDecoder().decode(value);
-            stdout += chunk;
-            options.onOutput(chunk);
+            const chunk = decoder.decode(value, { stream: true });
+            total += value.byteLength;
+            if (total <= MAX_OUTPUT_BYTES) {
+              stdout += chunk;
+              options.onOutput(chunk);
+            }
+          }
+          if (total > MAX_OUTPUT_BYTES) {
+            stdout += `\n[output truncated at ${MAX_OUTPUT_BYTES} bytes]`;
           }
         } else {
-          stdout = await new Response(proc.stdout).text();
+          stdout = await cappedText(proc.stdout);
         }
         const stderr = await stderrPromise;
         const exitCode = await proc.exited;
