@@ -57,6 +57,17 @@ describe("parseWorkflow", () => {
     ).toThrow(/cycle/);
   });
 
+  test("rejects unknown JSON-Logic operator in edge when (M2)", () => {
+    // `equals` is not in OPS: pre-M2 the evaluator treated it as a truthy
+    // data object and the gate routed unconditionally.
+    expect(() =>
+      parseWorkflow({
+        ...base,
+        edges: [{ from: "start", to: "done", when: { equals: [1, 1] } }],
+      }),
+    ).toThrow(/unknown JSON-Logic operator "equals"/);
+  });
+
   test("normalizes valid agent, script runtime and human", () => {
     const def = parseWorkflow({
       version: 1,

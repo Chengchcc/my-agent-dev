@@ -1,4 +1,5 @@
 import { topoSort } from "./graph.js";
+import { OPS } from "./json-logic.js";
 import type {
   FormField,
   InputHint,
@@ -233,6 +234,28 @@ function reachableNodes(nodes: WorkflowNode[], edges: WorkflowDefinition["edges"
  *  fields of the referenced node. Catches routes that reference fields the
  *  node doesn't produce (e.g. a typo, or a missing human form field) — the
  *  runtime would otherwise evaluate false forever and deadlock. */
+
+/** Collect JSONLogic operator keys that are NOT in the evaluator's OPS
+ *  whitelist. A single-key object with an unknown key (e.g. `{"equals":…}`
+ *  typo) would fall into evalJsonLogic's "plain object = data" branch and
+ *  be truthy forever — fail-OPEN (M2). Rejecting at parse time turns the
+ *  silent bypass into a save-time error naming the exact operator. */
+function collectUnknownOps(rule: unknown, out: string[]): void {
+  if (Array.isArray(rule)) {
+    for (const r of rule) collectUnknownOps(r, out);
+    return;
+  }
+  if (!isRecord(rule)) return;
+  const entries = Object.entries(rule);
+  if (entries.length === 1) {
+    const [op, arg] = entries[0]!;
+    if (OPS[op] !== true) out.push(op);
+    collectUnknownOps(arg, out);
+    return;
+  }
+  for (const [, v] of entries) collectUnknownOps(v, out);
+}
+
 function validateEdgeWhen(
   edges: WorkflowDefinition["edges"],
   nodeById: Map<string, WorkflowNode>,
@@ -240,6 +263,11 @@ function validateEdgeWhen(
 ): void {
   for (const e of edges) {
     if (e.when === undefined) continue;
+    const unknown: string[] = [];
+    collectUnknownOps(e.when, unknown);
+    for (const op of unknown) {
+      issues.push(`edge "${e.from}->${e.to}" when: unknown JSON-Logic operator "${op}"`);
+    }
     for (const path of collectVarPaths(e.when)) {
       const m = /^([A-Za-z0-9_-]+)\.output\.([A-Za-z0-9_-]+)$/.exec(path);
       if (!m) continue; // store. / input. / trigger. / node.results.* — dynamic, skip

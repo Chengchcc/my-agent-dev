@@ -6,7 +6,7 @@ import type { JsonLogicRule } from "./types.js";
  *  - `not`/`!!` 接受数组或裸对象两种形式
  *  - `var` 支持 "a.b" 路径与 ["a.b", default]
  */
-const OPS: Record<string, true> = {
+export const OPS: Record<string, true> = {
   var: true,
   "==": true,
   "!=": true,
