@@ -17,7 +17,12 @@ function catalogPaths(env: Record<string, string | undefined>): string[] {
   const paths: string[] = [];
   if (env.OMA_HOME) paths.push(join(env.OMA_HOME, "models.yml"));
   paths.push(join(homedir(), ".oma", "models.yml"));
-  paths.push(resolve(".oma", "models.yml"));
+  // H6: the CWD entry resolves into the agent-writable workspace when the
+  // process is spawned by the product backend — a prompt-injected file
+  // there could hijack provider baseUrl and exfiltrate API keys. The
+  // backend sets OMA_WORKSPACE_CATALOG=0 for its children; standalone
+  // (user-owned) sessions keep the CWD override.
+  if (env.OMA_WORKSPACE_CATALOG !== "0") paths.push(resolve(".oma", "models.yml"));
   return paths;
 }
 
