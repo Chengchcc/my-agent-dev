@@ -32,6 +32,10 @@ export const envSchema = z.object({
     .string()
     .optional()
     .describe("opt-in ('1'/'true'): allow workflow script nodes to execute unattended code"),
+  WORKFLOW_SANDBOX_DENY_READ: z
+    .string()
+    .optional()
+    .describe("comma-separated extra paths the workflow script sandbox must not read"),
   // ── Anthropic API ──
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_AUTH_TOKEN: z.string().optional(),

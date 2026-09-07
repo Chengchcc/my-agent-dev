@@ -12,10 +12,9 @@
  *  hostile script can still touch the host filesystem like any spawned
  *  process. Container-level isolation is a deliberate non-goal here. */
 
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-
+import { dirname, join, resolve } from "node:path";
 export interface SandboxInput {
   /** The script source (TS/JS module). Must `export default (ctx) => output`. */
   code: string;
@@ -88,13 +87,34 @@ try {
 }
 `;
 
-function bwrapArgv(base: readonly string[], isolation: SandboxInput["isolation"]): string[] {
-  const args = ["bwrap", "--dev-bind", "/", "/"];
+function bwrapArgv(
+  base: readonly string[],
+  isolation: SandboxInput["isolation"],
+  selfBinDir: string,
+): string[] {
+  const args = [
+    "bwrap",
+    "--dev-bind",
+    "/",
+    "/",
+    // Fresh PID namespace + procfs: the script cannot see, signal, or
+    // enumerate host processes (the backend included).
+    "--unshare-pid",
+    "--proc",
+    "/proc",
+  ];
   if (isolation?.noNetwork) args.push("--unshare-net");
+  // Hide the sandbox user's home dirs: the script runs as the SAME user,
+  // so home is the highest-value read/write surface. The bun binary often
+  // lives under the home — re-expose its bin dir read-only so PATH lookup
+  // and exec keep working.
+  args.push("--tmpfs", "/root", "--tmpfs", "/home", "--ro-bind", selfBinDir, selfBinDir);
   for (const d of isolation?.denyReadDirs ?? []) {
-    // bwrap needs an existing mountpoint; an empty tmpfs over the dir
-    // shadows its content (reads AND writes).
-    if (existsSync(d)) args.push("--tmpfs", d);
+    if (!existsSync(d)) continue;
+    // Directory: empty tmpfs shadows content (reads AND writes). File
+    // (e.g. the deployment .env): /dev/null overlay empties its reads.
+    if (statSync(d).isDirectory()) args.push("--tmpfs", d);
+    else args.push("--ro-bind", "/dev/null", d);
   }
   args.push(...base);
   return args;
@@ -210,7 +230,7 @@ export async function runInSandbox(input: SandboxInput): Promise<SandboxResult> 
   let baseArgv = ["bun", "run", join(dir, "__sandbox_main.ts")];
   if (isolationRequested) {
     if (onLinux && hasBwrap) {
-      baseArgv = bwrapArgv(baseArgv, isolation);
+      baseArgv = bwrapArgv(baseArgv, isolation, dirname(process.execPath));
     } else if (onMacos && hasSandboxExec) {
       baseArgv = sandboxExecArgv(baseArgv, dir, isolation);
     } else {
