@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { mkdirSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
@@ -10,8 +10,21 @@ export function openDb(dbPath: string): Database {
   const dir = path.dirname(dbPath);
   mkdirSync(dir, { recursive: true });
 
-  const sqlite = new Database(dbPath);
+  // M17: provider keys and session data live in this DB in plaintext.
+  // Owner-only on dir + files, every open (fixes legacy 0644 files too).
+  // In-memory DBs (":memory:", tests) must not chmod the process cwd.
+  const inMemory = dbPath === ":memory:";
+  if (!inMemory) {
+    chmodSync(dir, 0o700);
+  }
 
+  const sqlite = new Database(dbPath);
+  if (!inMemory) {
+    chmodSync(dbPath, 0o600);
+    for (const sidecar of [`${dbPath}-wal`, `${dbPath}-shm`]) {
+      if (existsSync(sidecar)) chmodSync(sidecar, 0o600);
+    }
+  }
   sqlite.exec("PRAGMA journal_mode = WAL");
   sqlite.exec("PRAGMA synchronous = NORMAL");
   // Phase 1: foreign keys ON so cascade deletes and FK constraints are enforced
