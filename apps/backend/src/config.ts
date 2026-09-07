@@ -71,6 +71,13 @@ export function loadConfig(env: Env = parseEnv(process.env)): BackendConfig {
     enabledMcpServers: env.ENABLED_MCP_SERVERS,
     workflowScriptsEnabled:
       env.WORKFLOW_SCRIPTS_ENABLED === "1" || env.WORKFLOW_SCRIPTS_ENABLED === "true",
-    workflowScriptDenyReadDirs: [dataDir, resolve(process.cwd(), ".env")],
+    workflowScriptDenyReadDirs: [
+      dataDir,
+      resolve(process.cwd(), ".env"),
+      ...(env.WORKFLOW_SANDBOX_DENY_READ ?? "")
+        .split(",")
+        .map((p) => p.trim())
+        .filter(Boolean),
+    ],
   };
 }
