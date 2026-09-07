@@ -691,6 +691,17 @@ export function createWorkflowExecutionService(
       if (!pending) throw new HttpError("Pending human task not found", 404);
       if (pending.status === "resolved") throw new HttpError("Human task already resolved", 409);
 
+      // The answer arrives over HTTP and must stay DATA (M1): `nextNode`
+      // would override every `when` condition downstream, and the
+      // prototype-pollution keys are control plane. Same filter as
+      // mergeInputs' data plane.
+      const answerData = Object.fromEntries(
+        Object.entries(answer).filter(
+          ([k]) =>
+            k !== "nextNode" && k !== "__proto__" && k !== "constructor" && k !== "prototype",
+        ),
+      );
+
       const done = (await deps.port.listNodeRuns(executionId)).filter(
         (r) => r.status === "completed",
       );
@@ -700,16 +711,16 @@ export function createWorkflowExecutionService(
         order: i,
         routedTo: r.routedTo ?? [],
       }));
-      const routedTo = routeOutgoing(nodeId, row.definition, arr, row.store, answer);
+      const routedTo = routeOutgoing(nodeId, row.definition, arr, row.store, answerData);
       const claimed = await deps.port.markPendingHumanResolved(executionId, nodeId);
       if (!claimed) throw new HttpError("Human task already resolved", 409);
       await deps.port.updateNodeRun(executionId, nodeId, {
         status: "completed",
-        output: answer,
+        output: answerData,
         routedTo,
         terminalAt: Date.now(),
       });
-      arr.push({ nodeId, output: answer, order: arr.length, routedTo });
+      arr.push({ nodeId, output: answerData, order: arr.length, routedTo });
       completions.set(executionId, arr);
       const fresh = await deps.port.getExecution(executionId);
       if (fresh) row.store = fresh.store;

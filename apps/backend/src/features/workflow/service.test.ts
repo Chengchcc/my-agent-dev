@@ -45,6 +45,24 @@ function makeHumanDef(): WorkflowDefinition {
   };
 }
 
+function makeHumanBranchDef(): WorkflowDefinition {
+  return {
+    version: 1,
+    id: "wf",
+    nodes: [
+      { id: "start", type: "start" },
+      { id: "h", type: "human", question: "ok?" },
+      { id: "done", type: "end", status: "success" },
+      { id: "rejected", type: "end", status: "failure" },
+    ],
+    edges: [
+      { from: "start", to: "h" },
+      { from: "h", to: "done", when: { "==": [{ var: "h.output.approved" }, true] } },
+      { from: "h", to: "rejected", when: { "==": [{ var: "h.output.approved" }, false] } },
+    ],
+  };
+}
+
 function makeAgentDef(): WorkflowDefinition {
   return {
     version: 1,
@@ -169,6 +187,29 @@ describe("createWorkflowExecutionService", () => {
     });
     expect(paused.status).toBe("waiting_human");
     const resumed = await svc.resolveHumanTask("e1", "h", { approved: true });
+    expect(resumed.status).toBe("success");
+  });
+
+  test("human answer nextNode cannot override when routing (M1)", async () => {
+    const { port } = ramPort();
+    const svc = createWorkflowExecutionService({
+      port,
+      nodeRunners: {} as never,
+      eventBus: { emit: () => {}, subscribe: async function* () {} } as never,
+      idGen: () => "e1",
+    });
+    const paused = await svc.runToCompletion("e1", {
+      workflowId: "wf",
+      definition: makeHumanBranchDef(),
+      input: {},
+    });
+    expect(paused.status).toBe("waiting_human");
+    // answer says approved → `when` routes to done; the injected nextNode
+    // (pre-M1 routing override) must be stripped, not followed.
+    const resumed = await svc.resolveHumanTask("e1", "h", {
+      approved: true,
+      nextNode: "rejected",
+    });
     expect(resumed.status).toBe("success");
   });
 
