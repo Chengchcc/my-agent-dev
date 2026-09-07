@@ -1,10 +1,10 @@
 # Deferred: MCP server 用于 Loop agent 运行时查询
 
-> ⚠ **状态更新(2026-08-13)**:MCP 已落地(ADR 0012 + workspace 桥接 + product-tools MCP),但 Loop 至今未接入 MCP。原"等 MCP 支持后执行"的前提已消失,deferral 成为长期事实:维持 Loop 不用 MCP。
+> ⚠ **状态更新(2026-08-13)**：MCP 已落地(ADR 0012 + workspace 桥接 + product-tools MCP)，但 Loop 至今未接入 MCP。原"等 MCP 支持后执行"的前提已消失，deferral 成为长期事实：维持 Loop 不用 MCP。
 
 ## 状态
 
-Deferred(维持;was 等 MCP 支持)
+Deferred(维持；was 等 MCP 支持)
 
 ## 上下文
 
@@ -25,8 +25,8 @@ Deferred(维持;was 等 MCP 支持)
 
 ## 后果
 
-- M3 prompt 用字符串拼接（当前设计），切换 MCP 后 prompt 结构不需要改——只把"内联内容"换成"tool call 结果"
-- loop-budget Skill 同样——先读文件内联，后切 MCP tool
+- M3 prompt 用字符串拼接（当前设计），切换 MCP 后 prompt 结构不需要改，只把"内联内容"换成"tool call 结果"
+- loop-budget Skill 同样：先读文件内联，后切 MCP tool
 - MCP server 实现时再写 ADR
 
 ## 关联

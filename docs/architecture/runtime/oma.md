@@ -14,6 +14,8 @@ used_by:
 # Oma Runtime
 
 `apps/oh-my-agent` 是自研执行引擎：一个 CLI，四种模式。Product Backend 的 Adapter 按**每个 Agent Run** spawn 其 **rpc 模式**（非交互，stdin/stdout JSONL）；`print`/`json` 同样是一次性模式；**TUI 是面向人的交互式终端**（独立启动，不是 backend 的执行路径）。
+
+```text
 Product Backend → Adapter (packages/adapter-oma-agent)
   → spawn oma --mode rpc
     → createOmaRuntime(): per-Run Runtime

@@ -14,7 +14,7 @@ used_by:
 ---
 
 # 飞书
-> ⚠ **部分过时(2026-08-13)**:ADR 0021 后不再建 human 成员(human 消息为对话外部事件);"群/用户映射成对话/成员"简化为群映射成单 Agent 对话。
+> ⚠ **部分过时（2026-08-13）**：ADR 0021 后不再建 human 成员（human 消息为对话外部事件）；「群/用户映射成对话/成员」简化为群映射成单 Agent 对话。
 
 飞书把飞书的群/用户映射成对话/成员，把入站消息 POST 给后端，通过 sse-watcher 消费 conversation ledger SSE 中的 MessageRevision 决定流式/最终可见文本。sse-watcher 是唯一出站流入口。去重依赖 revision 的 messageId + canSkipFinalLedgerText。
 
@@ -68,7 +68,7 @@ sequenceDiagram
 
 `sse-watcher` 用 `parseRevision` 解析账本 entry 的 content 为 `ConversationMessageRevision`。`state` 字段驱动出站行为：
 
-- `state === "streaming"`：run 仍在进行。sse-watcher 可将文本渐进渲染为streaming 消息（更新同一 message），但不发最终文本。
+- `state === "streaming"`：run 仍在进行。sse-watcher 可将文本渐进渲染为 streaming 消息（更新同一 message），但不发最终文本。
 - `state === "done"`：terminal revision。到达时查 `canSkipFinalLedgerText`——首次必发一次最终文本（`completeFromLedger` 尚为 0），重连重放时可跳过。
 - `state === "error"`：run 失败。发错误文本。
 
@@ -99,7 +99,7 @@ runId 匹配在调用方 `sse-watcher.processEntry` 做：解析 revision 的 `r
 ## 失败模式
 
 - 最终答案重复：terminal revision 重放 / `canSkipFinalLedgerText` 没命中。
-- 不支持的内容：纯工具块projected into ledger。
+- 不支持的内容：纯工具块 projected into ledger。
 - 会话绑定错：飞书 chat 映射到了错误对话。
 - 缺成员：飞书用户没解析成 human 成员。
 

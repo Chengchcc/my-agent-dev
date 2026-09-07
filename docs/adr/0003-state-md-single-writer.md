@@ -6,7 +6,7 @@ Accepted
 
 ## 上下文
 
-Loop 运行时有三类 AgentSession：Discovery（发现 item）、Generator（改代码）、Evaluator（验证修复）。每个都在运行时产出数据——发现的 item、改动的文件列表、验证结论。
+Loop 运行时有三类 AgentSession：Discovery（发现 item）、Generator（改代码）、Evaluator（验证修复）。每个都在运行时产出数据：发现的 item、改动的文件列表、验证结论。
 
 三种 AgentSession 是否可以各自写 STATE.md？
 

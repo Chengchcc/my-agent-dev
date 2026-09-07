@@ -1,6 +1,6 @@
 # ADR 0004: Discovery 是 loopStep() 内的独立 AgentSession
 
-> ⚠ **已取代(2026-08-21)**:发现环节已回归,但形态不是独立 AgentSession——ADR 0025 的 workflow-first 把 discovery 实现为 **triage workflow**(`discoverItems()` 扫 repo mirror 信号 → triage 子 agent → 幂等 ADD_ITEM,见 `loop-step.ts`)。本文的"独立 Discovery AgentSession + loop-triage skill"设计保留为历史。
+> ⚠ **已取代(2026-08-21)**：发现环节已回归，但形态不是独立 AgentSession：ADR 0025 的 workflow-first 把 discovery 实现为 **triage workflow**(`discoverItems()` 扫 repo mirror 信号 → triage 子 agent → 幂等 ADD_ITEM，见 `loop-step.ts`)。本文的"独立 Discovery AgentSession + loop-triage skill"设计保留为历史。
 
 ## 状态
 
@@ -23,13 +23,13 @@ Superseded by ADR 0025 (was Accepted, then wrongly marked Obsolete 2026-08-13 �
 4. 对每个 fixing item 起 Generator → 起 Evaluator
 5. 写回 STATE.md
 
-Discovery AgentSession 与 Generator/Evaluator 同级——不同 sessionId、不同 model、不同 Skill。区别只在它**先跑、产出被写入 STATE.md 后才推进后续**。
+Discovery AgentSession 与 Generator/Evaluator 同级，不同 sessionId、不同 model、不同 Skill。区别只在它**先跑、产出被写入 STATE.md 后才推进后续**。
 
 ## 后果
 
 - loopStep() 内有三类 AgentSession：Discovery → Generator → Evaluator
 - Discovery 的 findings 格式需结构化（至少包含 summary + source）
-- 手动 Loop（trigger=manual）跳过 Discovery——没有 discovery skill，不扫外部信号
+- 手动 Loop（trigger=manual）跳过 Discovery：没有 discovery skill，不扫外部信号
 - loop-runner.md 伪代码需补上 Discovery 步骤
 
 ## 关联

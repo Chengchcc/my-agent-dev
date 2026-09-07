@@ -1,18 +1,18 @@
-# 飞书卡片流式渲染 — 前期调研
+# 飞书卡片流式渲染：前期调研
 
 > **状态：已废弃（superseded）。** 本文描述的 `run-delta-watcher` / `card-sender` / `card-renderer` 路径从未进入生产代码。实际出站路径走 `sse-watcher.ts`，消费 conversation ledger SSE，经 `render.ts` 转为纯文本发送。卡片流式渲染方案保留为未来参考，但当前架构不沿此方向。
 >
 > 2026-06-14 · 基于 lark-cli v1.0.53 + 飞书卡片 JSON 2.0 文档
 
-## 一、目标
+## 目标
 
 M15 当前只发纯文本最终回复。下一步（M16+）要做到：agent 生成回复的过程中，Lark 端以**流式卡片**逐步展示内容——类似 ChatGPT 的打字效果，但以飞书卡片为载体。
 
-## 二、关键 API
+## 关键 API
 
 > **来源**：lark-cli v1.0.53 实测 + [飞书服务端 API 文档](https://open.feishu.cn/document/server-docs/im-v1/message/create)
 
-### 2.1 发送卡片消息
+### 发送卡片消息
 
 ```
 lark-cli im +messages-send \
@@ -26,7 +26,7 @@ lark-cli im +messages-send \
 
 ✅ **已验证**（2026-06-13，lark-cli v1.0.53，profile fixture-test，bot 身份）
 
-### 2.2 更新卡片（流式追加内容）
+### 更新卡片（流式追加内容）
 
 飞书 OpenAPI 支持 PATCH 更新已发送的卡片：
 
@@ -49,7 +49,7 @@ lark-cli api PATCH "/open-apis/im/v1/messages/{message_id}" \
 - 更新时需要传**完整卡片 JSON**（非增量 patch）——客户端用新的完整 JSON 替换渲染
 - 需要在卡片 JSON 中设置 `config.update_multi=true`（共享卡片）
 
-### 2.3 流式模式配置
+### 流式模式配置
 
 在卡片 JSON 的 `config` 中启用流式模式：
 
@@ -79,16 +79,16 @@ lark-cli api PATCH "/open-apis/im/v1/messages/{message_id}" \
 - `streaming_config.print_frequency_ms` — 渲染频率（ms）
 - `summary.content` — 聊天列表中的预览文案，流式模式下默认 "生成中..."
 
-## 三、与当前架构的集成点
+## 与当前架构的集成点
 
-### 3.1 当前数据流
+### 当前数据流
 
 ```
 agent run → AgentEvent(delta) → event_log → (目前只读最终)
                                            → (未来: SSE watcher 读 delta)
 ```
 
-### 3.2 流式方案
+### 流式方案
 
 ```
 agent run → text_delta → SSE watcher 捕获
@@ -121,9 +121,9 @@ function watchRunDelta(runId: string, messageId: string, larkChatId: string) {
 
 **方案 B：D19 后批量发送**
 
-agent 跑完后一次性发卡片——不走流式，但可以利用卡片的 markdown 组件展示富文本。这是 MVP 之后的第一步升级，先拿到卡片展示能力，再叠流式。
+agent 跑完后一次性发卡片，不走流式，但可以利用卡片的 markdown 组件展示富文本。这是 MVP 之后的第一步升级，先拿到卡片展示能力，再叠流式。
 
-### 3.3 需要新增的能力
+### 需要新增的能力
 
 | 能力 | 优先级 | 说明 |
 |------|--------|------|
@@ -133,9 +133,9 @@ agent 跑完后一次性发卡片——不走流式，但可以利用卡片的 m
 | `textToCardRenderer` | P1 | 将流式文本增量转换为卡片元素 |
 | `templateCardBuilder` | P2 | 预设卡片模板（思考中/生成中/完成/错误） |
 
-## 四、卡片组件速查
+## 卡片组件速查
 
-### 4.1 Markdown 组件（推荐用于 agent 输出）
+### Markdown 组件（推荐用于 agent 输出）
 
 ```json
 {
@@ -147,7 +147,7 @@ agent 跑完后一次性发卡片——不走流式，但可以利用卡片的 m
 
 支持飞书 markdown 语法：标题、加粗、列表、代码块、链接、图片。
 
-### 4.2 文本组件
+### 文本组件
 
 ```json
 {
@@ -157,7 +157,7 @@ agent 跑完后一次性发卡片——不走流式，但可以利用卡片的 m
 }
 ```
 
-### 4.3 按钮组件（交互回调）
+### 按钮组件（交互回调）
 
 ```json
 {
@@ -169,9 +169,9 @@ agent 跑完后一次性发卡片——不走流式，但可以利用卡片的 m
 }
 ```
 
-按钮点击会产生 `card.action.trigger` 事件——需要 lark-bot 订阅该事件类型才能响应。这是未来交互式审批/确认的基础。
+按钮点击会产生 `card.action.trigger` 事件，需要 lark-bot 订阅该事件类型才能响应。这是未来交互式审批/确认的基础。
 
-### 4.4 布局容器
+### 布局容器
 
 ```json
 {
@@ -184,11 +184,11 @@ agent 跑完后一次性发卡片——不走流式，但可以利用卡片的 m
 }
 ```
 
-## 五、流式性能参数
+## 流式性能参数
 
 > **来源**：[流式更新卡片](https://open.larkoffice.com/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/streaming-updates-openapi-overview)
 
-飞书客户端对流式卡片有内置的去抖/聚合机制（`streaming_config`）。服务端不需要做逐 token 推送——可以用更大的 chunk（如每 100ms 或每 5 个 token 推一次）：
+飞书客户端对流式卡片有内置的去抖/聚合机制（`streaming_config`）。服务端不需要做逐 token 推送，可以用更大的 chunk（如每 100ms 或每 5 个 token 推一次）：
 
 | 参数 | 推荐值 | 说明 |
 |------|--------|------|
@@ -198,7 +198,7 @@ agent 跑完后一次性发卡片——不走流式，但可以利用卡片的 m
 
 实际推送频率建议：**每 100-200ms 更新一次卡片**，每次包含当前完整文本。这比逐 token 推送更稳定，也降低了 API 调用量。
 
-## 六、与当前 `sender.ts` 的对比
+## 与当前 `sender.ts` 的对比
 
 | | 当前 `sendMessage` | 流式 `sendCard` |
 |---|---|---|
@@ -207,22 +207,22 @@ agent 跑完后一次性发卡片——不走流式，但可以利用卡片的 m
 | 去重 | `--idempotency-key` | 同上 |
 | 内容 | 纯文本 | 卡片 JSON（支持 markdown/布局/交互） |
 
-## 七、风险与限制
+## 风险与限制
 
-### 7.1 已实测（lark-cli v1.0.53 + fixture-test profile）
+### 已实测（lark-cli v1.0.53 + fixture-test profile）
 
 1. **发送卡片**：`lark-cli im +messages-send --msg-type interactive --content '<card JSON>' --as bot` — ✅ 可用，P2P 和群聊均测试通过。
 2. **幂等发送**：`--idempotency-key` 返回相同 message_id — ✅ 确认有效。
 3. **接收卡片事件**：`event consume im.message.receive_v1` 收到 `message_type=interactive` 时 content 为 JSON string — ✅ fixture 已有。
 
-### 7.2 官方文档确认（可作为实现依据）
+### 官方文档确认（可作为实现依据）
 
 1. **客户端兼容**：卡片 JSON 2.0 需要飞书客户端 ≥7.20。[来源](https://open.larkoffice.com/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/card-json-v2-breaking-changes-release-notes)
 2. **共享卡片约束**：`update_multi` 必须为 `true`。[来源](https://open.larkoffice.com/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/card-json-v2-structure)
 3. **PATCH 全量替换**：需要传完整卡片 JSON。[来源](https://open.feishu.cn/document/server-docs/im-v1/message/patch)
 4. **流式配置参数**：`streaming_mode/streaming_config/print_step/print_frequency_ms`。[来源](https://open.larkoffice.com/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/streaming-updates-openapi-overview)
 
-### 7.3 M15.1 spike 验证结果（2026-06-14，lark-cli v1.0.53）
+### M15.1 spike 验证结果（2026-06-14，lark-cli v1.0.53）
 
 以下项目已在 M15.1 spike 中 dry-run 验证：
 
@@ -251,15 +251,15 @@ agent 跑完后一次性发卡片——不走流式，但可以利用卡片的 m
    lark-cli api DELETE /open-apis/im/v1/messages/<id>/reactions/<reaction_id>
    ```
 
-### 7.4 仍需真实验证（M15.1 implementation gate）
+### 仍需真实验证（M15.1 implementation gate）
 
-1. **body size 上限**：未在官方文档找到明确数字，需通过 API 返回错误码 or 压测确认。当前保守设为 12000 chars markdown。
+1. **body size 上限**：未在官方文档找到明确数字，需通过 API 返回错误码或压测确认。当前保守设为 12000 chars markdown。
 2. **更新频率/限流**：推测约 100 次/分钟/应用，需通过压测或[官方限流文档](https://open.feishu.cn/document/server-docs/api-call-guide/rate-limit)确认实际值。M15.1 保守节流 150ms/次。
 3. **update_multi 群聊可见性**：需验证群聊场景下所有成员是否实时看到卡片更新。
 4. **streaming_config 实际渲染效果**：需在真实设备验证 `print_step`/`print_frequency_ms` 参数的效果差异。
 5. **sendCard stdout JSON 中 message_id 字段路径**：需 fixture-test profile 真实发送一次，确认是 `message_id` 还是 `data.message_id`。
 
-### 7.5 能力探测（capability probe）
+### 能力探测（capability probe）
 
 不同 Mira / 本地 runtime 可能安装不同 `lark-cli` 版本。实现应在启动时 probe 以下能力，失败时降级：
 
@@ -269,7 +269,7 @@ agent 跑完后一次性发卡片——不走流式，但可以利用卡片的 m
 | `api PATCH /im/v1/messages` | dry-run 后 grep `PATCH` | `updateCard` 不可用，只发最终卡片 |
 | `config init --new` | 执行后 grep URL pattern | 切到 `legacy_secret_stdin` provisioner |
 
-## 八、推进路径（更新）
+## 推进路径
 
 1. ~~**M15.x**（当前）— 保持文本发送，验证 E2E 稳定性~~ ✅ 已完成
 2. **M15.1 卡片 + 流式** — `sendCard` + `runDeltaWatcher` + `updateCard` + `Typing` reaction lifecycle，降级纯文本 fallback

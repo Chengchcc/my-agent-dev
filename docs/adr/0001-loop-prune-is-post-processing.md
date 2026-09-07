@@ -9,7 +9,7 @@ Accepted
 Loop 的 item 有四个终态：`resolved`、`inbox`（驳回/耗尽）、`promoted`。
 
 - `resolved` / `promoted`：纯终结，留在 STATE.md 没意义，应清理
-- `inbox`：人驳回或返工耗尽的 item——人未来可能想捡回来继续跑，不应消失
+- `inbox`：人驳回或返工耗尽的 item，人未来可能想捡回来继续跑，不应消失
 
 prune 作为 reducer action 还是后处理：
 - **A**：`PRUNE` 作为 reducer action，在状态转移层删除终态 item
@@ -29,9 +29,9 @@ prune 作为 reducer action 还是后处理：
 ```
 
 - STATE.md prune 规则：删 `resolved` + `promoted`；`inbox` item 不写回 STATE.md
-- `inbox` item 追写到 INBOX.md（追加，不覆盖——多次驳回同 id 保留最新一条）
+- `inbox` item 追写到 INBOX.md（追加，不覆盖：多次驳回同 id 保留最新一条）
 - `RETRY { itemId }` action：从 INBOX.md 删除该 item → 写回 STATE.md（step=triaged, attempt=1）
-- loopReducer 管 step 转移，不管文件写回——prune 和 INBOX.md 写入是 loopStep() 的职责
+- loopReducer 管 step 转移，不管文件写回；prune 和 INBOX.md 写入是 loopStep() 的职责
 
 ## 后果
 

@@ -1,4 +1,4 @@
-# ADR 0012: MCP Client 架构 -- per-agent 常驻连接 + 预连接缓存
+# ADR 0012: MCP Client 架构：per-agent 常驻连接 + 预连接缓存
 
 ## 状态
 
@@ -6,7 +6,7 @@ Proposed
 
 ## 上下文
 
-项目需要让 Agent 运行时连接外部 MCP server，发现其 tools 并作为 `Tool[]` 暴露给模型。这是 MCP Client 角色（不是 MCP Server -- ADR 0005 延迟的那个方向）。
+项目需要让 Agent 运行时连接外部 MCP server，发现其 tools 并作为 `Tool[]` 暴露给模型。这是 MCP Client 角色（不是 MCP Server，ADR 0005 延迟的那个方向）。
 
 当前架构中，外部资源挂载到 agent 有两个先例：
 
@@ -16,7 +16,7 @@ Proposed
 MCP server 配置本质上是**外部工具源**，类似 skill-pack 但粒度是"工具"而非"指令"。核心架构约束：
 
 1. `Tool` 接口（`packages/core/src/tool.ts`）是工具注入的唯一契约。MCP tools 必须适配成 `Tool[]` 才能进入 `spanLoop` -> `model.stream(msgs, { tools })` 管道。
-2. `sessionManager.create(config)` 是**同步**的。MCP tool discovery 是异步的（需连 server + listTools）。不能改 session 创建签名--那会波及所有 feature。
+2. `sessionManager.create(config)` 是**同步**的。MCP tool discovery 是异步的（需连 server + listTools）。不能改 session 创建签名，那会波及所有 feature。
 3. `validatePlugins()` 对工具名冲突直接抛异常。MCP tool 名由远程 server 定义，不可控。
 
 ## 决策

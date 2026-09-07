@@ -1,6 +1,6 @@
 # ADR: Memory Plugin 重构 + Autonomous Memory
 
-> ✅ **被 workspace 文件模型取代(2026-08-13)**:plugin-fs-memory 与 plugin-memory 包均不存在——记忆功能已吸收进 backend agent feature:workspace `memory/MEMORY.md` + `memory/facts/*.md`(agent-identity.ts 读写,agent 自写 facts)。原"改名+重构"路径未走,功能以文件形态落地。
+> ✅ **被 workspace 文件模型取代(2026-08-13)**：plugin-fs-memory 与 plugin-memory 包均不存在，记忆功能已吸收进 backend agent feature：workspace `memory/MEMORY.md` + `memory/facts/*.md`(agent-identity.ts 读写，agent 自写 facts)。原"改名+重构"路径未走，功能以文件形态落地。
 
 **日期**: 2026-07-22
 **范围**: `packages/plugin-fs-memory` → `packages/plugin-memory`（改名 + 重构 + 新功能）
@@ -29,19 +29,19 @@
 
 ## 决策
 
-### 1. 所有权统一：agent-identity 移除 readMemoryFacts
+### 所有权统一：agent-identity 移除 readMemoryFacts
 
-`agent-identity.ts` 的 `readMemoryFacts()` 负责读取 `memory/MEMORY.md` + `memory/facts/*.md`。这个职责移给 `plugin-memory`——它是唯一负责 memory I/O 的模块。identity 只负责 SOUL.md / USER.md / agent 身份。
+`agent-identity.ts` 的 `readMemoryFacts()` 负责读取 `memory/MEMORY.md` + `memory/facts/*.md`。这个职责移给 `plugin-memory`，它是唯一负责 memory I/O 的模块。identity 只负责 SOUL.md / USER.md / agent 身份。
 
-### 2. 包改名：`plugin-fs-memory` → `plugin-memory`
+### 包改名：`plugin-fs-memory` → `plugin-memory`
 
 `fs` 是实现细节（文件系统），随着自动提取加入，包名应反映领域语义。改名时保持仓库内引用一致。
 
-### 3. cwd 切换：workspaceRoot → per-agent
+### cwd 切换：workspaceRoot → per-agent
 
 `fsMemoryPlugin` 当前用 `config.workspaceRoot/memory/`（共享），改为 `config.dataDir/agents/<agentId>/memory/`（per-agent）。记忆是 agent 自身的，不是共享的。`agent-identity` 已用 per-agent 路径，此改动对齐。
 
-### 4. memory_write 升级：抄 OMP retain
+### memory_write 升级：抄 OMP retain
 
 ```yaml
 # 当前（单个）
@@ -56,9 +56,9 @@ memory_retain({
 })
 ```
 
-context 字段帮助搜索——分词索引 context，匹配度加权。
+context 字段帮助搜索：分词索引 context，匹配度加权。
 
-### 5. memory_search 升级：多词 AND + 时间过滤
+### memory_search 升级：多词 AND + 时间过滤
 
 ```
 当前：memory_search({ query: "JWT login" })
@@ -72,7 +72,7 @@ context 字段帮助搜索——分词索引 context，匹配度加权。
 
 不引入新依赖（零 embedding/vector DB）。
 
-### 6. Autonomous Memory 两阶段 pipeline
+### Autonomous Memory 两阶段 pipeline
 
 ```
 afterModel（每 run 结束）

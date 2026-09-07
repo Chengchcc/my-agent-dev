@@ -1,6 +1,6 @@
-# ADR 0011: Web 信息架构重组——Work / Chat / Team 三级心智，Issue 于前端退役由 Loop 承接
+# ADR 0011: Web 信息架构重组：Work / Chat / Team 三级心智，Issue 于前端退役由 Loop 承接
 
-> ✅ **已实施(2026-08-13)**:Work/Chat/Team IA 已上线(apps/web NavRail 三级结构),Issue 页面退役由 Loop 承接。本文档从提案转为实施记录。
+> ✅ **已实施(2026-08-13)**：Work/Chat/Team IA 已上线(apps/web NavRail 三级结构)，Issue 页面退役由 Loop 承接。本文档从提案转为实施记录。
 
 ## 状态
 
@@ -16,23 +16,23 @@ Implemented(was Proposed)
 
 Web 控制台（`apps/web`）的信息架构是**按后端模块生长出来的**，不是按用户意图组织的。侧边栏 `NavRail` 当前把入口平铺成四组：`Workspace`（Agent 列表）、动态 `Conversations`、`Navigate`（Issues / Projects / Schedules / Skill Packs）、`Operations`（Observability / Loops）。这套结构有三类结构性问题：
 
-### 1. 两个产品卖点被拆散、强弱错位
+### 两个产品卖点被拆散、强弱错位
 
 产品有两条并列的价值主线：
 
-- **在场协作**——人和多个 Agent 在同一对话里 `@mention`、实时双端（Web + Lark）同步。这是日常入口，但**不是差异化**：聊天类产品都有。
-- **离场托付**——Loop 定时自主"发现 → 生成 → 独立验证 → 人在闸门"，把三步证据链摆到用户面前等待拍板。这是**护城河**：别的聊天产品给不了"你不在的时候 Agent 把活干完并自证"。
+- **在场协作**：人和多个 Agent 在同一对话里 `@mention`、实时双端（Web + Lark）同步。这是日常入口，但**不是差异化**：聊天类产品都有。
+- **离场托付**：Loop 定时自主"发现 → 生成 → 独立验证 → 人在闸门"，把三步证据链摆到用户面前等待拍板。这是**护城河**：别的聊天产品给不了"你不在的时候 Agent 把活干完并自证"。
 
 但当前 IA 把 `Loops` 塞进 `Operations` 组、和监控混在一起，等于把最强的差异化卖点降格成运维附属品。用户进门第一眼是"选一个 Agent 开始聊天"，而不是"有几件事等你拍板"。
 
-### 2. 同一件事被拆成多个平级概念（概念债）
+### 同一件事被拆成多个平级概念（概念债）
 
 `docs/architecture/design-philosophy.md` 的三条最终准则是"统一本体，不复制语义；暴露业务，隐藏机制；边界要硬，概念要少"。当前 IA 违反第三条：
 
-- `/cron`（UI 名 Schedules）、`/loops`、`/issues` 三个平级路由都在做"定时 + 开关 + 运行 + 产出工作单元"，语义高度重叠。实际上 **cron 只是 Loop 的一个触发字段**（`cron_job.cronExpr`），**Issue 是一种工作单元**——它们是 Loop 的属性和产物，不该各自当一级路由。
+- `/cron`（UI 名 Schedules）、`/loops`、`/issues` 三个平级路由都在做"定时 + 开关 + 运行 + 产出工作单元"，语义高度重叠。实际上 **cron 只是 Loop 的一个触发字段**（`cron_job.cronExpr`），**Issue 是一种工作单元**：它们是 Loop 的属性和产物，不该各自当一级路由。
 - `/ops` 与业务并列成一级 tab，但可观测性本质是"贴着每个业务对象翻背面看证据"，不是独立领域。
 
-### 3. URL 与语义脱节、深链孤岛、复制粘贴残留
+### URL 与语义脱节、深链孤岛、复制粘贴残留
 
 - `NavRail` 里 **`Loops` 条目重复渲染两次**（`NavRail.tsx:289-301` 与 `:302-313`，后者无 tooltip、`isActive` 误判），是明显的复制粘贴 bug。
 - `/ops/agents`、`/ops/sessions`、`/ops/surfaces`（及各自 `[id]` 详情）在侧边栏**无任何入口**，只能靠组件内链接进入，是深链孤岛。
@@ -42,11 +42,11 @@ Web 控制台（`apps/web`）的信息架构是**按后端模块生长出来的*
 
 ### 关于"Issue 已被 Loop 取代"的事实澄清
 
-产品决策是"Issue 由 Loop 承接、前端退役"。但**代码现状并非如此**——需在本 ADR 里诚实记录，避免后续实现基于错误前提：
+产品决策是"Issue 由 Loop 承接、前端退役"。但**代码现状并非如此**，需在本 ADR 里诚实记录，避免后续实现基于错误前提：
 
 - Issue 后端仍完整存活并接线：`apps/backend/src/app.ts` `.use(issues)`、`main.ts` 实例化 `createIssueService` / `sqliteIssueAdapter` / `issueRoutes`，drizzle `issue` / `issue_event` 表仍是 schema 核心，orchestrator reactor 仍消费 Issue。
 - Issue Web 仍完整接线：`/issues` 页 + `IssueKanban` + `useIssue*` hooks + issue SSE 通道；`NavRail` 仍有 Issues 入口。
-- Loop **不消费 Issue**：`loop-step.ts` 全程不 import issue，Loop 的 item 来源是自由字符串 `source`，item 状态持久在 `loop_item` / `loop_budget` 表——Loop 是独立子系统，不是 Issue 的下游。
+- Loop **不消费 Issue**：`loop-step.ts` 全程不 import issue，Loop 的 item 来源是自由字符串 `source`，item 状态持久在 `loop_item` / `loop_budget` 表。Loop 是独立子系统，不是 Issue 的下游。
 
 因此本 ADR 的裁决是**产品方向的落地决策**，而非对现状的描述：**Loop 已作为并列一等功能落地，本 ADR 决定在前端（Web IA 层）退役 Issue、由 Loop 承接工作单元语义**；后端 Issue 表与服务的物理下线是独立的后续迁移，不在本 ADR 的前端 IA 范围内强制同步执行。
 
@@ -63,15 +63,15 @@ SYSTEM—— 系统健康与全局检索（低调，给运维，不占一级心�
 
 用户脑子里只需装三个词：**Work（托付）/ Chat（协作）/ Team（同事）**。现在的 issues、cron、loops、ops、skill-packs、projects 六个平级概念，全部归位为这三者的内部结构或产物。这直接落地设计哲学的"边界要硬，概念要少"与"暴露业务，隐藏机制"。
 
-### 原则一：一件事一个家
+### 一件事一个家
 
-同一个领域对象只在一个地方被创建、被查看、被追溯。Loop 的工作单元（item）、运行历史、证据链、审批,全部收在 `/work` 内部；不再散落到 `/issues`（另一套看板）、`/cron`（另一套定时列表）、`/ops/sessions`（另一套执行事实）。
+同一个领域对象只在一个地方被创建、被查看、被追溯。Loop 的工作单元（item）、运行历史、证据链、审批，全部收在 `/work` 内部；不再散落到 `/issues`（另一套看板）、`/cron`（另一套定时列表）、`/ops/sessions`（另一套执行事实）。
 
-### 原则二：可观测性是业务对象的"背面"，不是并列 tab
+### 可观测性是业务对象的"背面"，不是并列 tab
 
-面向**单个对象**的执行事实（session / span / attempt）**下沉**到它所属的 Chat 会话或 Work 详情页里——在哪产生就在哪看，消灭深链孤岛。面向**全局**的健康与检索**上收**到 `/system`。`/ops` 作为一级入口取消。
+面向**单个对象**的执行事实（session / span / attempt）**下沉**到它所属的 Chat 会话或 Work 详情页里，在哪产生就在哪看，消灭深链孤岛。面向**全局**的健康与检索**上收**到 `/system`。`/ops` 作为一级入口取消。
 
-### 原则三：Issue 在前端退役，Loop 承接工作单元
+### Issue 在前端退役，Loop 承接工作单元
 
 `/issues` 路由、`IssueKanban`、"New Issue" 写入口从 Web IA 中移除。"一件需要 Agent 完成并经人审的工作"这一语义，统一由 Loop 的 item 表达。后端 Issue 表可暂留为只读/停用（物理下线是独立迁移），但**前端不再提供 Issue 的创建与看板入口**。
 

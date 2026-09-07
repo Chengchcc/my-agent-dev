@@ -1,6 +1,6 @@
 # ADR: Autonomous Memory
 
-> ✅ **目标达成、机制被取代(2026-08-13)**:agent 自主记忆经 workspace 文件落地(agent 自写 `memory/facts/*.md` + `MEMORY.md`,SOUL/USER 经 cwd meta 注入 child);原 plugin-memory 包 + identityPlugin 注入 `<memory>` 标签的机制未建。
+> ✅ **目标达成、机制被取代(2026-08-13)**：agent 自主记忆经 workspace 文件落地(agent 自写 `memory/facts/*.md` + `MEMORY.md`，SOUL/USER 经 cwd meta 注入 child)；原 plugin-memory 包 + identityPlugin 注入 `<memory>` 标签的机制未建。
 
 **日期**: 2026-07-22
 **范围**: `packages/plugin-memory`（新包），conversation-compose 接线，identityPlugin 注入
@@ -35,7 +35,7 @@ Injection: read-path.md 模板 → system prompt append
 
 ### 多后端
 
-OMP 支持 4 个互斥后端: off / local / hindsight / mnemopi。我们只用 **local**（最基础的文件态后端）。
+OMP 支持 4 个互斥后端：off / local / hindsight / mnemopi。我们只用 **local**（最基础的文件态后端）。
 
 ### 关键 Prompt
 
@@ -51,11 +51,11 @@ OMP 支持 4 个互斥后端: off / local / hindsight / mnemopi。我们只用 *
 
 ### 简化：去掉 SQLite job queue
 
-OMP 用 SQLite 做 job 并发控制（claim/lease/heartbeat）。我们只有一个 backend 进程，不需要 claim/lease。用 conversation ledger 的 `ts` 做增量判断——每个 agent 的 memory pipeline 只处理上次提取之后的新 ledger entries。
+OMP 用 SQLite 做 job 并发控制（claim/lease/heartbeat）。我们只有一个 backend 进程，不需要 claim/lease。用 conversation ledger 的 `ts` 做增量判断：每个 agent 的 memory pipeline 只处理上次提取之后的新 ledger entries。
 
 ### 简化：去掉 learn 工具
 
-OMP 有 `learn` tool + `autolearn` controller。我们的 agent 不主动调用 learn——全靠后台 pipeline 自动提取。跟 recap 一样：每轮结束后异步跑一次小模型调用。
+OMP 有 `learn` tool + `autolearn` controller。我们的 agent 不主动调用 learn，全靠后台 pipeline 自动提取。跟 recap 一样：每轮结束后异步跑一次小模型调用。
 
 ### 存储：agent workspace 文件系统
 
@@ -68,7 +68,7 @@ OMP 有 `learn` tool + `autolearn` controller。我们的 agent 不主动调用 
 
 ### 注入：identityPlugin beforeModel
 
-`memory_summary.md` 在 `beforeRun` 时读取，注入到 system prompt 的 `<memory>` 标签中。已有 `fsMemoryPlugin` 做这件事——我们扩展它，或者让 identityPlugin 在 composeSystemPrompt 时注入。
+`memory_summary.md` 在 `beforeRun` 时读取，注入到 system prompt 的 `<memory>` 标签中。已有 `fsMemoryPlugin` 做这件事，我们扩展它，或者让 identityPlugin 在 composeSystemPrompt 时注入。
 
 ### 时序
 

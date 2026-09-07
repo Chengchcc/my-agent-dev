@@ -15,7 +15,7 @@ used_by:
 ---
 
 # 未来工作
-> ⚠ **需复核(2026-08-13)**:本页部分条目已落地或已废弃(如 relationships 已删、记忆已吸收进工作区文件、多后端已实现)——每条以最新 ADR 索引为准。
+> ⚠ **需复核(2026-08-13)**：本页部分条目已落地或已废弃（如 relationships 已删、记忆已吸收进工作区文件、多后端已实现）——每条以最新 ADR 索引为准。
 
 这一页是唯一谈「还没做 / 想做」的地方——刻意和描述当前状态的所有页面隔离开，避免把「现状」和「设想」混在一起误导读者。其余每一页都只讲代码现在确实是怎样的；任何前瞻性的方向都收拢到这里，并标注它依赖哪些现有抽象。
 
@@ -27,7 +27,7 @@ used_by:
 
 > 以下为方向性条目，不代表已实现；落地前请以对应当前状态页为准。
 
-- **更细的投影可见性策略**　当前 assistant 消息经 `onRunMessage` 直写账本，projection bridge只做 best-effort fan-out。未来可引入更细的可见性规则（按成员、按事件子类型），但任何扩展都应保持「assistant 消息与人类消息同一入口直写账本」「账本为唯一对话事实」这两条不变式。依赖：[会话投影](../runs/output-and-live-updates.md)、[事实与投影](../foundations/facts-and-projections.md)。
+- **更细的投影可见性策略**　当前 assistant 消息经 `onRunMessage` 直写账本，projection bridge 只做 best-effort fan-out。未来可引入更细的可见性规则（按成员、按事件子类型），但任何扩展都应保持「assistant 消息与人类消息同一入口直写账本」「账本为唯一对话事实」这两条不变式。依赖：[会话投影](../runs/output-and-live-updates.md)、[事实与投影](../foundations/facts-and-projections.md)。
 - **端去重的统一化**　**已解决。** 飞书侧的 `canSkipFinalLedgerText` 及相关 dedup 逻辑已随 Lark 重构移除，SSE 事件直接渲染。当前仅 Web + Lark 两端，各自无去重负担。若未来接入更多端再考虑共享去重层。
 - **恢复语义的强化**　**历史方案，已随 Phase 5/6 删除。** checkpointer 的 saveInterrupt / consumeInterrupt 与整个 session 持久化体系已不存在。当前语义：中断/崩溃 = 当前 Agent Run failed；下一个输入 = 新 Run = 从 Agent Context full projection 重建，无恢复路径。
 - **Issue 协作工作流演进**　**已被 Loop 取代。** Issue 本体与 Orchestrator 模块已删除（无 `features/orchestrator/`、无 Issue CRUD），工作流编排能力由 Loop 系统承接（workflow-first：fix/verify 子 agent + human gate，见 [ADR 0025](../../adr/0025-loop-workflow-first-execution.md)）。M18.3-M18.7 里程碑失效，Project 实体化已独立落地（`features/project/` CRUD 已完成）。旧 `span_origin` 表（含 issueId 列）已随 Phase 6 迁移 0020 删除。
@@ -96,7 +96,7 @@ used_by:
   | **P3** | Telemetry（OTel GenAI 语义约定） | ⏳ 待办 | 无当前 implementation；旧 runtime-observability 已删除。未来如做，按 child-process 链路（每次 Run 的 adapter 侧）重做，不引入常驻进程观测 | 1 周 |
   | **P3** | Tokenizer（精确 token 计数） | ✅ 已完成 | countTokens/countMessageTokens 工具函数 | 2026-07-21 |
 
-  OMP 的 dialect 系统（anthropic/deepseek/gemini/glm/kimi/qwen3 等 15+ 个 dialect 的 prompt 格式适配）不值得抄 -- 我们的 API 层已有消息转换，且不需要 thinking 格式适配（不同模型的 reasoning 格式差异由 API 层处理）。
+  OMP 的 dialect 系统（anthropic/deepseek/gemini/glm/kimi/qwen3 等 15+ 个 dialect 的 prompt 格式适配）不值得抄——我们的 API 层已有消息转换，且不需要 thinking 格式适配（不同模型的 reasoning 格式差异由 API 层处理）。
 - **Autonomous Memory（自主记忆）（2026-07-22）**　**历史方案，已随 Phase 6 删除。** `plugin-fs-memory` / `plugin-memory` 包不存在；memory.autoExtract 等 settings 已从 UI 移除。当前没有 autonomous memory pipeline producer。Agent 详情页 Memory tab 仍存在，但只读取 workspace 中已有的文件（如 memory/facts、memory_summary.md），不做自动提取/合并。若恢复，必须作为 Oma 或 Product 侧的真实能力重做。
 
 
@@ -138,7 +138,7 @@ Loop 已闭环：发现（auto-triage）/ 创建（四要素+workflow 模板）/
 | P2 | **webhook 触发** | 外部 CI/issue 推送信号到 `POST /triage`（已预留落点，需 secret） |
 | P2 | **verify 双模型** | fix 用贵模型、verify 用便宜模型（`agent()` per-agent model 扩展） |
 | P2 | **配置演进** | LOOP.md 在线编辑 / refine 真正按新意图重新生成（接 loop-config-generator AI） |
-| P2 | **cron next-run 展示** | UI 显示下次触发时间（Bun.cron 不暴露,需自算） |
+| P2 | **cron next-run 展示** | UI 显示下次触发时间（Bun.cron 不暴露，需自算） |
 
 
 ## 处理原则

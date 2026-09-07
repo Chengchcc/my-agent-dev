@@ -4,7 +4,7 @@ title: 技能包管理
 status: current
 owners: architecture
 last_verified_against_code: 2026-07-28
-summary: "技能包（Skill Pack）是一等领域实体--有来源、版本、安装生命周期。安装/同步由 builtin 技能 + 原子工具 + 临时 Agent 驱动，LLM 自主处理 git 冲突等 corner case。运行时 progressive-skill 经共享 fs adapter 消费分配好的 packs，builtin 恒在最前。"
+summary: "技能包（Skill Pack）是一等领域实体——有来源、版本、安装生命周期。安装/同步由 builtin 技能 + 原子工具 + 临时 Agent 驱动，LLM 自主处理 git 冲突等 corner case。运行时 progressive-skill 经共享 fs adapter 消费分配好的 packs，builtin 恒在最前。"
 depends_on:
   - plugins.progressive-skill
   - backend.data-model
@@ -65,9 +65,9 @@ stateDiagram-v2
   ready --> [*]: uninstall（builtin 拒绝）
 ```
 
-`status` 仅经 `applyInstallTransition` 变更——非法转移抛错。`failed→ready` 路径不存在（必须先到 installing/syncing 再 ready），`error` 在转 `ready` 时必被清为 `null`。builtin 包（`sourceKind='builtin'`）不可卸载（API 409）。
+`status` 仅经 `applyInstallTransition` 变更，非法转移抛错。`failed→ready` 路径不存在（必须先到 installing/syncing 再 ready），`error` 在转 `ready` 时必被清为 `null`。builtin 包（`sourceKind='builtin'`）不可卸载（API 409）。
 
-## 安装/同步——Agent 驱动
+## 安装/同步由 Agent 驱动
 
 安装/同步不走硬编码 TypeScript 流水线，而是：
 
@@ -94,7 +94,7 @@ sequenceDiagram
     IS->>DB: 收尾校验（非终态 → failed）
 ```
 
-**zip 解包安全**：`createPackUnzipTool` 使用 temp→validate→rename 模式——先解到隔离 temp 目录 → `validateExtractedEntries` 逐条 `lstat` 检查 symlink + `realpath` 边界 → 原子 rename。拒绝 symlink（技能包不应含符号链接），拒绝路径穿越。
+**zip 解包安全**：`createPackUnzipTool` 使用 temp→validate→rename 模式，先解到隔离 temp 目录 → `validateExtractedEntries` 逐条 `lstat` 检查 symlink + `realpath` 边界 → 原子 rename。拒绝 symlink（技能包不应含符号链接），拒绝路径穿越。
 
 **git sync**：`createPackGitSyncTool` 使用 `git fetch origin <ref>` + `git reset --hard FETCH_HEAD`，`FETCH_HEAD` 是正确的浅仓库 reset 目标（不用 `origin/HEAD` 因为可能未设置）。同步完成后调用 `invalidateSkillCache(root)` 强制刷新缓存。
 
@@ -127,9 +127,9 @@ const skillRoots = port ? await buildSkillRoots(agentId, port, config.dataDir) :
 - 安装 agent 工具 cwd 锁定在 `<dataDir>/skill-packs/`（`nodeFsAdapter` 带 `inCwd` 路径段校验，防 `/skill-packs-evil` 前缀误判）
 - `pack_update_status` 经 `applyInstallTransition` 校验，agent 无法破坏状态机
 - 安装/同步过程**绝不执行包内脚本**
-- zip 解包：temp→validate→rename 模式——逐条 `lstat` / `realpath` 防 symlink 逃逸和路径穿越
+- zip 解包：temp→validate→rename 模式，逐条 `lstat` / `realpath` 防 symlink 逃逸和路径穿越
 - 上传限制：multipart bodyLimit 50MB
-- git 产出的 symlink 不额外拒绝——实际执行仍经 permissionMode + cwd 隔离
+- git 产出的 symlink 不额外拒绝，实际执行仍经 permissionMode + cwd 隔离
 
 ## 共享模块
 

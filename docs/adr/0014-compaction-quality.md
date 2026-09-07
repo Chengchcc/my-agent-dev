@@ -8,10 +8,10 @@
 
 ## 背景
 
-当前 `autoSummarize` 有两处短板：
+当前 `autoSummarize` 的短板：
 1. `structuredSummarize` 用 5 段中文自由格式，不如 OMP 的 8 段 markdown + checkbox 结构
 2. `autoSummarize` 的 cut point 是 `slice(0, -keepRecent)` 按消息数盲切，可能切断 tool_use/tool_result 对
-3. 无迭代更新——每次压缩重新生成摘要，不认得已有的 previous summary
+3. 无迭代更新：每次压缩重新生成摘要，不认得已有的 previous summary
 
 ## 调研
 
@@ -19,7 +19,7 @@
 
 ## 决策
 
-### 1. 摘要 prompt → 抄 OMP 的 `compaction-summary.md`
+### 摘要 prompt → 抄 OMP 的 `compaction-summary.md`
 
 OMP 的 8 段 markdown 格式：
 
@@ -36,13 +36,13 @@ OMP 的 8 段 markdown 格式：
 ## Additional Notes
 ```
 
-比我们当前的 5 段中文（目标/约束/进度/关键决策/下一步）多了 Done/In Progress/Blocked 拆分、Critical Context、Additional Notes。这个格式和系统里已有的 `<system-reminder>` XML 风格不冲突——prompt 本身是给 LLM 看的，不是给 agent 看的。
+比我们当前的 5 段中文（目标/约束/进度/关键决策/下一步）多了 Done/In Progress/Blocked 拆分、Critical Context、Additional Notes。这个格式和系统里已有的 `<system-reminder>` XML 风格不冲突：prompt 本身是给 LLM 看的，不是给 agent 看的。
 
-### 2. 迭代更新 → 抄 OMP 的 `compaction-update-summary.md`
+### 迭代更新 → 抄 OMP 的 `compaction-update-summary.md`
 
 当已经存在一次 compaction 的 summary（Session Tree `CompactionEntry`）时，不再重新生成，而是传入 `<previous-summary>` + 新消息做增量合并。OMP 的版本有显式的 per-section 保留规则（保持历史 Goal、Done 只增不减、Next Steps 更新等），比 Pi 的版本更精确。
 
-### 3. 切点 → 抄 Pi 的 `findCutPoint`
+### 切点 → 抄 Pi 的 `findCutPoint`
 
 从尾部反向 walk 消息，按 `estimateTokens` 累加 token 数，当超出 `keepRecentTokens` 预算时停止。关键约束：**只停在 user/assistant 消息边界**，不切 tool_use/tool_result 中间。
 

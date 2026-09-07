@@ -1,6 +1,6 @@
 # Superpowers 归档区
 
-> ⚠ **归档标注（2026-08-21，T6）**：本目录是**历史归档**——specs / plans / retros 记录已发生或已否决的设计推演，**不代表当前架构**。阅读现状与决策请以活区为准：
+> ⚠ **归档标注（2026-08-21，T6）**：本目录是**历史归档**，specs / plans / retros 记录已发生或已否决的设计推演，**不代表当前架构**。阅读现状与决策请以活区为准：
 
 - 现状：`docs/architecture/`（含 `index.llm.md` 入口 + `MANIFEST.md` 打包清单）
 - 决策：`docs/adr/`（ADR 索引 `README.md` 是决策唯一目录）

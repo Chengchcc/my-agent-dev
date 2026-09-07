@@ -31,7 +31,7 @@ used_by:
 
 ## 按需加载：skill_load
 
-当 Agent 决定使用某个技能，它调用 `skill_load` 工具，把那个技能的正文加载进来。触发完全由 Agent 自己的判断驱动——不是预先全量，也不是规则硬编码，而是「需要时才取」。
+当 Agent 决定使用某个技能，它调用 `skill_load` 工具，把那个技能的正文加载进来。触发完全由 Agent 自己的判断驱动，需要时才取，不是预先全量，也不是规则硬编码。
 
 `skill_load` 支持 `offset` 参数用于分页续读：技能正文一次加载有字符上限（默认 8000），超出时在段落边界截断，并返回 `[Truncated. Call skill_load('name', offset=N) to continue.]` 提示。Agent 可以传 `offset` 继续读取剩余内容（`skill-load.ts` 第 44-63 行）。
 
@@ -48,7 +48,7 @@ M22 之前插件仅扫描 `/skills/`（别名 `/private/skills/*`），即 singl
 
 ### /skill:name 显式调用
 
-M22 新增 `findSkillByName` 能力，允许用户通过 `/skill:name` 语法显式触发某个技能，不依赖模型自动判断。Human 消息中的 `/skill:name` 被解析后，对应技能正文自动注入上下文，无需走 `skill_load` 工具。这解决了模型在长对话中「忘记调用技能」的问题——用户可直接点名。
+M22 新增 `findSkillByName` 能力，允许用户通过 `/skill:name` 语法显式触发某个技能，不依赖模型自动判断。Human 消息中的 `/skill:name` 被解析后，对应技能正文自动注入上下文，无需走 `skill_load` 工具。这解决了模型在长对话中「忘记调用技能」的问题，用户可直接点名。
 
 ### disableModelInvocation
 

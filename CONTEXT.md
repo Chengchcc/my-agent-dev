@@ -45,7 +45,7 @@ Product Backend 按 Run 调度一次性 child 进程，账本唯一、终态原�
 | **Knowledge Pack** | 知识库分发单元（ADR 0022），MCP 暴露；本仓库自食其力维护 `knowledge-packs/my-agent-team` | 不是 Skill Pack |
 | **Project / Worktree** | 项目实体 + 每 agent 每 project 的 git worktree（ADR 0023）；`workspace-lock` per-worktree 互斥（run dispatch / clean-start / agent detach 同锁序列化） | 不是 Agent Workspace |
 
-## 两条执行链
+## 执行链
 
 ```text
 ① 对话链
@@ -104,7 +104,7 @@ L1 Contracts    packages/message（协议）、packages/agent-contract（spawn �
 | `apps/oh-my-agent/src/core/workflow/` | oma-native | 脚本式 workflow executor + subagent registry（Run.workflow 输入路径） |
 | `@chengchenccc/test-helpers` | test | `echoModel()` 确定性 ChatModel 测试替身 |
 
-## 三条铁律（设计哲学核心）
+## 铁律（设计哲学核心）
 
 1. **统一本体，不复制语义** — 同一领域对象（Message, Run, Conversation, Workflow）不在每个模块各定义一份
 2. **暴露业务，隐藏机制** — Ledger/Queue/Projection/Engine 是实现细节，不上浮成主心智
@@ -173,9 +173,9 @@ mounted MCP 工具表（native + MCP + plugin 汇总）统一过滤（--tools �
 
 ## 已知前沿与未决
 
-- **ADR 0026 威胁模型**（单用户本地产品，agent 半信任）：LAN/hosted 前需补 — bash 约束超 cwd 检查、MCP env/headers 静态加密、移除 mock 登录面
+- **ADR 0026 威胁模型**（单用户本地产品，agent 半信任）：LAN/hosted 前需补 bash 约束超 cwd 检查、MCP env/headers 静态加密、移除 mock 登录面
 - `docs/future-work.md`：native 工具 ask 范围目前仅覆盖插件 code 工具的补全（run-runtime 级 gate 已有）；plugin update 命令等小项
-- `docs/architecture/roadmap/future-work.md` 自标"需复核"（2026-08-13/20 基线，Loop 条目已随 Loop 删除失效）——读时以 ADR 索引为准
+- `docs/architecture/roadmap/future-work.md` 自标「需复核」（2026-08-13/20 基线，Loop 条目已随 Loop 删除失效），读时以 ADR 索引为准
 - loop_item / loop_budget / cron_job 已随 d35e7dd6 从 schema 删除（DROP 迁移 0042/0043）；仅 `db.test.ts` Phase-6 fixture 作为历史迁移测试有意保留对它们的 INSERT/断言
 
 ## 常用命令

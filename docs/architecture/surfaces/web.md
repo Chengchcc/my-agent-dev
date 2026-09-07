@@ -14,7 +14,7 @@ used_by:
 ---
 
 # Web 端
-> ⚠ **部分过时(2026-08-13)**:roster 多成员 UI 已按 ADR 0021 收编为单 Agent;对话页单 agent 视角,新增 agent 详情 Workspace tab(只读文件浏览)。
+> ⚠ **部分过时（2026-08-13）**：roster 多成员 UI 已按 ADR 0021 收编为单 Agent；对话页单 agent 视角，新增 agent 详情 Workspace tab（只读文件浏览）。
 
 Web 端是浏览器里的对话界面。它开启一个 SSE 连接到 `/api/bff/conversations/:id/events`，接收 [ledger](../conversation/history.md) 推送的条目。reducer 按 `messageId` upsert 到 `items[]`（`UiItem` 联合：`message` 和 `notice` 两种 kind）。busy 从 open message 的 `state` 字段推导——state 为 `streaming` 或 `waiting` 时表示 Agent 仍在运行或等待审批。
 
@@ -76,7 +76,7 @@ export function isBusy(s: ConvState): boolean {
 
 - 乐观消息残留：ledger echo 丢失时 `opt-` 消息不会被替换；messageId 不匹配时持久消息重复显示。
 - streaming 文本不刷新：revision messageId 和前序不一致导致独立消息。
-- 缺 reasoning：`reasoning_delta` 端到端产生，适配器从 thinking block 发出。不需要就上游去掉。
+- 缺 reasoning：`reasoning_delta` 端到端产生，适配器从 thinking block 发出。不需要就在上游去掉。
 - 轮询抖动：不稳定 effect 依赖重建 interval。
 
 ## 关联页面

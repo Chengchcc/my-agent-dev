@@ -4,7 +4,7 @@
 > 待办清单见 [future-work.md](./future-work.md)——三份文档不混用。
 > 基线：2026-08-31 HEAD（8f200eb4），证据窗口 2026-08-05 起 532 commits。
 
-## 第一步对齐：目标、问题、指标
+## 先对齐：目标、问题、指标
 
 - **项目目标**（README/ADR 推导）：单人可运维的多 Agent 团队运行时——可靠执行（不掉消息、终态原子）+ 可编排（Workflow）+ 双端可见。
 - **本项目的「用户」是谁**：① repo owner（决策者 + 唯一运维者 + 产品最终用户，ADR 0026 单用户定位）；② 会话 agent（oma child 与在仓库里工作的 coding agent——文档与契约的消费者）；③ 未来表面的其他使用者（当前不存在，不作为 insight 对象）。
@@ -33,13 +33,13 @@
 
 **可信度**：较高可信（多源定量 + 案例；未做分群归因）。
 
-## I2 已「闭环」的功能仍被整体替换——删除成本才是架构决策的真实成本
+## I2 已「闭环」的功能仍被整体替换：删除成本才是架构决策的真实成本
 
 **我们观察到** Loop 自 07-02 开发，08-20 ADR 0025 宣布闭环（Doctor 巡检、defer、taskClass、verifyCommands 全落地），**08 天后（08-28，d35e7dd6）整体删除**，由 4 天前才诞生的 Workflow DSL 接管；同期 PluginTool.kind 建成数日内删除。
 
 **证据是** git 时间线（loop 提交 07-02→08-20；workflow 提交 08-27→08-31；loop-step.ts 删除于 08-28）+ ADR 0025 自述（角色层历史遗留、meta 写回脆弱、配置与执行错位）。
 
-**这并不是因为** 闭环做得不完整，**而是因为** 闭环验证的是「状态机能不能跑」，没有验证「产品心智是否匹配」——owner 真正要的是可视化节点图（agent/script/human + Artifact），不是 STATE.md 文件态状态机；在错误抽象上叠功能（Doctor、defer）实际是在增加未来的删除成本。
+**这并不是因为** 闭环做得不完整，**而是因为** 闭环验证的是「状态机能不能跑」，没有验证「产品心智是否匹配」——owner 要的是可视化节点图（agent/script/human + Artifact），不是 STATE.md 文件态状态机；在错误抽象上叠功能（Doctor、defer）实际是在增加未来的删除成本。
 
 **这会导致** 前期正确性投资中，只有落在**正确的抽象边界**上的部分被保留（如 source-fetch 基座）；其余随替换归零。
 
@@ -61,7 +61,7 @@
 
 **可信度**：已验证（本次实测；「agent 产出质量下降」本身未量化）。
 
-## I4 真实模型 E2E 验证稀缺且高杠杆——wire 层 bug 几乎只在真实运行暴露
+## I4 真实模型 E2E 验证稀缺且高杠杆：wire 层 bug 几乎只在真实运行暴露
 
 **我们观察到** 08-26 两次真实 E2E 各暴露一个 fake 测试完全无法覆盖的缺陷（`.mcp.json` URL 404 导致注入工具整体静默不可见）；workflow 接入真实使用后 fix 集中爆发（schema retry、null terminalResult poll、typed sse contract、auto-title retry）。
 
@@ -87,33 +87,34 @@
 （`goal-state.ts`、`ConversationGoalStatusBar`、`/goal` 路由、WorkSummary），至 2026-09-01
 （9f2dd45e）才清扫干净。规则固化：**删功能必须同变更清扫全部产品暴露面——引擎、UI、
 命令、HTTP 接口、文档是一个功能的多个影子，只删引擎会留幽灵。** 未来「空间」功能
-频繁增删时,把该规则当作删除类变更的验收项(audit 检查或 PR 自查清单)。
+频繁增删时，把该规则当作删除类变更的验收项（audit 检查或 PR 自查清单）。
 
-## I6 oma 安全投入纵深极深,但边界留白是 semi-trusted 定位的投影(2026-09-03)
+## I6 oma 安全投入纵深极深，但边界留白是 semi-trusted 定位的投影（2026-09-03）
 
-**我们观察到** oma 内核安全面呈鲜明特征:纵深超过业界平均(路径逃逸防到中间
+**我们观察到** oma 内核安全面呈鲜明特征：纵深超过业界平均（路径逃逸防到中间
 目录 symlink、插件信任防到内容哈希改动即失效、审批防到超时/无交互一律 deny、
-SSRF 防到 169.254.169.254),但边界有硬留白(bash 只约束 cwd 不约束命令语义与
-网络、URL guard 不校验解析后 IP)。
+SSRF 防到 169.254.169.254），但边界有硬留白（bash 只约束 cwd 不约束命令语义与
+网络、URL guard 不校验解析后 IP）。
 
-**这并不是因为** 防护能力不够,**而是因为** 纵深与留白都是 ADR 0026
-「single-user local / agents semi-trusted」定位的直接投影——留白在单人本地是
-「正确的残余风险接受」,ADR 0026 已把升级项列成 LAN/hosted follow-up。
+**这并不是因为** 防护能力不够，**而是因为** 纵深与留白都是 ADR 0026
+「single-user local / agents semi-trusted」定位的直接投影：留白在单人本地是
+「正确的残余风险接受」，ADR 0026 已把升级项列成 LAN/hosted follow-up。
 
-**这会导致** 网络化部署时,这些残余风险静默升级为真实攻击面(跨租户文件读、
-内网横向移动、多租户 trust 隔离),且没有任何机制在部署形态切换时强制复核。
+**这会导致** 网络化部署时，这些残余风险静默升级为真实攻击面（跨租户文件读、
+内网横向移动、多租户 trust 隔离），且没有任何机制在部署形态切换时强制复核。
 
-**因此存在的机会是** 把「网络化五项准入门槛」(bash OS 沙箱[设计已定稿]、
-MCP env 加密、移除 mock login、URL 解析后 IP 校验、native allow-rules)与
-ADR 0026 的 re-review 条款绑定为部署准入,而不是上线后补丁。详见
+**因此存在的机会是** 把「网络化五项准入门槛」（bash OS 沙箱「设计已定稿」、
+MCP env 加密、移除 mock login、URL 解析后 IP 校验、native allow-rules）与
+ADR 0026 的 re-review 条款绑定为部署准入，而不是上线后补丁。详见
 [oma 内核安全面](./architecture/security/oma-kernel.md)。
 
-**修正记录**:本次对账修正了两处初稿判断——redirect 缺口是半缺口(默认
-createStdWebFetchPort 已逐 hop 过 guard);native permission gate 已于
-2026-08-26 内核强制(4633e9af/600afddf/46c574cd),future-work.md 相关表述
-已同步修正。印证 I5:洞察必须与代码对账,「已验证」标签尤其要重新核实。
+**修正记录**：本次对账修正了两处初稿判断——redirect 缺口是半缺口（默认
+`createStdWebFetchPort` 已逐 hop 过 guard）；native permission gate 已于
+2026-08-26 内核强制（4633e9af/600afddf/46c574cd），future-work.md 相关表述
+已同步修正。印证 I5：洞察必须与代码对账，「已验证」标签尤其要重新核实。
 
-**可信度**:已验证(代码逐项核实;网络化风险为前瞻判断,较高可信)。
+**可信度**：已验证（代码逐项核实；网络化风险为前瞻判断，较高可信）。
+
 ---
 
 ## 汇总
@@ -125,6 +126,6 @@ createStdWebFetchPort 已逐 hop 过 guard);native permission gate 已于
 | I3 | 文档是 agent 运行时依赖，审计覆盖不足 | audit:docs 红绿 | **已验证** | 扩展 audit:docs 做路径存在性对账 |
 | I4 | 真实 E2E 稀缺且高杠杆 | 冒烟通过率 | 较高可信 | ✅ `bun scripts/smoke-workflow.ts` + `SMOKE_CRON` 定时自冒烟 |
 | I5 | 删除收尾（已闭环） | 死概念残留数 | 较高可信 | ✅ 08-28 已随 d35e7dd6 完成；fixture 有意保留 |
-| I6 | 安全纵深深、边界留白是定位投影 | 网络化准入门槛达成率 | **已验证** | BashSandbox 设计定稿,门槛登记 oma-kernel.md |
+| I6 | 安全纵深深、边界留白是定位投影 | 网络化准入门槛达成率 | **已验证** | BashSandbox 设计定稿，门槛登记 oma-kernel.md |
 
 Owner 均为 repo owner（单人项目）。每条推进后回填验证结果与可信度升级。

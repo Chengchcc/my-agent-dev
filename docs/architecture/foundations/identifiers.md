@@ -3,7 +3,7 @@ id: foundations.identifiers
 title: 标识符体系
 status: current
 owners: architecture
-summary: "系统里的 id 分两类：实体主键（conversationId / agentId / memberId / treeId / branchId 等）与执行身份。执行身份只有一个：agentRunId —— Agent Run 是唯一 Product execution identity，没有 span/attempt/session 概念。"
+summary: "系统里的 id 分两类：实体主键（conversationId / agentId / memberId / treeId / branchId 等）与执行身份。执行身份只有一个：agentRunId，Agent Run 是唯一 Product execution identity，没有 span/attempt/session 概念。"
 depends_on:
   - design-philosophy
   - foundations.facts-and-projections
@@ -14,7 +14,7 @@ used_by:
 
 # 标识符体系
 
-Phase 5/6 收敛后的标识符体系：实体主键彼此独立；执行身份收敛为**一个** —— Agent Run 的 `runId`。历史文档中的 span/attempt/session 概念已全部删除（schema 迁移 0020 删除 `span`/`attempt`/`control_plane_event`/`span_origin` 表和 ledger 的 `span_id` 列）。
+Phase 5/6 收敛后的标识符体系：实体主键彼此独立；执行身份收敛为**一个**：Agent Run 的 `runId`。历史文档中的 span/attempt/session 概念已全部删除（schema 迁移 0020 删除 `span`/`attempt`/`control_plane_event`/`span_origin` 表和 ledger 的 `span_id` 列）。
 
 ## 两类 id
 
@@ -39,7 +39,7 @@ runId —— 一次 Agent Run（agent_run.run_id）
 
 - `runId` 由 Product Backend 在创建 Run 时生成（`crypto.randomUUID()`）。
 - final assistant Message 的 `messageId = run:<runId>:assistant:<ordinal>`（`assistantMessageId(runId, ordinal)`，`packages/message/src/helpers.ts`）。
-- terminal commit 写入 ledger 时带 `agent_run_id`（partial unique —— 一个 runId 的提交只能写一次）。
+- terminal commit 写入 ledger 时带 `agent_run_id`（partial unique：一个 runId 的提交只能写一次）。
 - `deliveryIdempotencyKey` / `inputIdempotencyKey` 保证队列重投与输入去重。
 
 ## 为什么没有 span/attempt/session

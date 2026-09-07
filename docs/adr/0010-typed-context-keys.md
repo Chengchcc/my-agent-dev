@@ -1,6 +1,6 @@
 # ADR 0010: Typed Context Keys — 引擎单态化，per-run 数据靠键类型收窄
 
-> ⚠ **已过期(2026-08-13)**:未采纳——typed context keys 未落地,引擎已按 ADR 0016 整体重建(run-centric),本提案的对象(HookContext/单态化)不再存在。
+> ⚠ **已过期(2026-08-13)**：未采纳。typed context keys 未落地，引擎已按 ADR 0016 整体重建(run-centric)，本提案的对象(HookContext/单态化)不再存在。
 
 ## 状态
 
@@ -8,7 +8,7 @@ Superseded(was Proposed,未采纳)
 
 ## 上下文
 
-ADR 0009 补充决策 D 明确规定：`HookContext` 上的 per-run 业务上下文字段应为 **`context?: unknown`**（把原来的业务名 `conversation` 改成技术中性名 `context`），plugin 在运行时自己 `as` 收窄。这是一个**单态**（monomorphic）设计——framework 引擎不带任何类型参数，per-run 数据是一个 opaque 槽。
+ADR 0009 补充决策 D 明确规定：`HookContext` 上的 per-run 业务上下文字段应为 **`context?: unknown`**（把原来的业务名 `conversation` 改成技术中性名 `context`），plugin 在运行时自己 `as` 收窄。这是一个**单态**（monomorphic）设计：framework 引擎不带任何类型参数，per-run 数据是一个 opaque 槽。
 
 但 commit `93122efb`（塌缩 harness 调用层的落地实现）**偏离了这条已 Accepted 的决策**，改成了泛型方案：
 
@@ -25,7 +25,7 @@ create-agent.ts(243,41): 同上
 create-agent.ts(302,41): 同上
 ```
 
-根因是 `PluginRunner<Ctx>` 里的 `readonly _ctx?: Ctx` 幻影字段——它让 `AgentRuntime<Ctx>` 对 `Ctx` **不变**（invariant）。`AgentRuntime<Ctx>`（未约束 `Ctx`）无法赋给 `AgentRuntime<Record<string, unknown>>`，三个 `spanLoop(rt, ...)` 调用点全部 TS2345。
+根因是 `PluginRunner<Ctx>` 里的 `readonly _ctx?: Ctx` 幻影字段，它让 `AgentRuntime<Ctx>` 对 `Ctx` **不变**（invariant）。`AgentRuntime<Ctx>`（未约束 `Ctx`）无法赋给 `AgentRuntime<Record<string, unknown>>`，三个 `spanLoop(rt, ...)` 调用点全部 TS2345。
 
 ### 影响面
 
@@ -61,7 +61,7 @@ per-run 数据的类型安全
     零反向依赖：framework 不认识任何具体 T。
 ```
 
-`ctx.data?: Ctx`（单槽 blob）被 `ctx.context: ContextStore`（多键、每键各自类型）取代。这与 ADR 0009-D 的意图（"technical-neutral、单态、feature 各自拥有类型"）一致，只是把"运行时 `as` 收窄"升级为"编译期 key 收窄"——去掉了 plugin 侧的 `as` 断言。
+`ctx.data?: Ctx`（单槽 blob）被 `ctx.context: ContextStore`（多键、每键各自类型）取代。这与 ADR 0009-D 的意图（"technical-neutral、单态、feature 各自拥有类型"）一致，只是把"运行时 `as` 收窄"升级为"编译期 key 收窄"，去掉了 plugin 侧的 `as` 断言。
 
 ### 新增接口（framework）
 
@@ -107,7 +107,7 @@ export interface HookContext {
 }
 ```
 
-`PluginRunner` 删除幻影字段 `readonly _ctx?: Ctx`——它是不变性的来源，一并消失。`AgentRunOptions.data?: Ctx` → `AgentRunOptions.context?: ContextStore`。
+`PluginRunner` 删除幻影字段 `readonly _ctx?: Ctx`，它是不变性的来源，一并消失。`AgentRunOptions.data?: Ctx` → `AgentRunOptions.context?: ContextStore`。
 
 ### 数据流
 
@@ -125,7 +125,7 @@ plugin:       const conv = ConversationCtx.get(ctx)   // ← ConversationContext
 
 ### 为什么这类 TS2345 变得结构上不可能
 
-泛型 `Ctx` 不再是任何引擎类型的参数，`AgentRuntime` 只有一种形态 `AgentRuntime`（无参），`spanLoop(rt: AgentRuntime, ...)` 与调用点 `spanLoop(rt, ...)` 天然同型。"某个消费者忘了跟着泛型化"这件事没有了发生的土壤。类型安全从 plugin 侧的 `ctx.data as ConversationContext` 变成 `ConversationCtx.get(ctx): ConversationContext | undefined`——缺席是一等公民（返回 `undefined`），顺带正确覆盖 cron / orchestrator 这些没有 conversation 上下文的 run。
+泛型 `Ctx` 不再是任何引擎类型的参数，`AgentRuntime` 只有一种形态 `AgentRuntime`（无参），`spanLoop(rt: AgentRuntime, ...)` 与调用点 `spanLoop(rt, ...)` 天然同型。"某个消费者忘了跟着泛型化"这件事没有了发生的土壤。类型安全从 plugin 侧的 `ctx.data as ConversationContext` 变成 `ConversationCtx.get(ctx): ConversationContext | undefined`，缺席是一等公民（返回 `undefined`），顺带正确覆盖 cron / orchestrator 这些没有 conversation 上下文的 run。
 
 ## 后果
 

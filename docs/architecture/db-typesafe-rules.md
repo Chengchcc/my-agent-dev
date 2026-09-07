@@ -2,13 +2,13 @@
 
 > 本文是 **design-philosophy 铁律 1「统一本体，不复制语义」在 backend 内部类型链上的可执行版**。
 > 任何 agent（或人）在 backend 内加字段、改表结构、写 service 返回类型、读写 JSON 列、加枚举值前，**先过这张表**。
-> drizzle schema 在 `apps/backend/src/infra/db/schema.ts` 是**唯一真源**——所有 TS 类型、zod schema、service DTO 都从它单向推导。
+> drizzle schema 在 `apps/backend/src/infra/db/schema.ts` 是**唯一真源**：所有 TS 类型、zod schema、service DTO 都从它单向推导。
 
 ## 0. 一句话根因
 
-drizzle 表定义一旦和 service 层的类型**各写一份**，编译器就看不见它们的关系——改表加字段、service 手写 interface 不报错；删列、service 残留死字段。`tsc 通过` 不是"对"的证据（手写 interface 和 drizzle 表可以永久分叉）。**唯一解法：drizzle 表是唯一真源，所有下游类型经 `$inferSelect`/`$inferInsert` + drizzle-zod 推导。**
+drizzle 表定义一旦和 service 层的类型**各写一份**，编译器就看不见它们的关系：改表加字段、service 手写 interface 不报错；删列、service 残留死字段。`tsc 通过` 不是"对"的证据（手写 interface 和 drizzle 表可以永久分叉）。**唯一解法：drizzle 表是唯一真源，所有下游类型经 `$inferSelect`/`$inferInsert` + drizzle-zod 推导。**
 
-> 实证（2026-06-28 HEAD）：backend 已完成的 storage-convergence 把 `runId`→`spanId`、删掉了 `heartbeatAt`/`transport`，但 web 的 `api.ts` 手抄 interface 仍用旧名、仍保留死字段——`tsc` 全程不报错。backend 内部的 drizzle→service 链已收敛，但若不加规则护栏，同样裂化会在 6 个月后重现。
+> 实证（2026-06-28 HEAD）：backend 已完成的 storage-convergence 把 `runId`→`spanId`、删掉了 `heartbeatAt`/`transport`，但 web 的 `api.ts` 手抄 interface 仍用旧名、仍保留死字段，`tsc` 全程不报错。backend 内部的 drizzle→service 链已收敛，但若不加规则护栏，同样裂化会在 6 个月后重现。
 
 ## 1. 触发器决策表（动手前必查）
 
@@ -33,8 +33,8 @@ drizzle 表定义一旦和 service 层的类型**各写一份**，编译器就�
 | Row 写类型 | `typeof schema.xxx.$inferInsert` | `import type` → 直接使用 | 手写 `interface XxxInsert { ... }` / 裸 `Record<string, unknown>` |
 | 运行时校验（读） | `xxxSelectSchema`（drizzle-zod `createSelectSchema` + transform） | `.parse(row)` → 类型收窄为 `$inferSelect` | `row as XxxRow` |
 | 运行时校验（写） | `xxxInsertSchema`（drizzle-zod `createInsertSchema` + transform） | `.parse(input)` → 类型收窄为 `$inferInsert` | 裸 insert 无校验 |
-| JSON 列 codec | drizzle-zod `refine` callback：读 `JSON.parse`、写 `JSON.stringify` | 对业务代码透明——经 zod parse 后自动是 object | `JSON.parse(row.payload) as T` |
-| Int bool codec | drizzle-zod transform：读 `n !== 0`、写 `? 1 : 0` | 对业务代码透明——经 zod parse 后自动是 boolean | `!!row.enabled` / 手动 `? 1 : 0` |
+| JSON 列 codec | drizzle-zod `refine` callback：读 `JSON.parse`、写 `JSON.stringify` | 对业务代码透明：经 zod parse 后自动是 object | `JSON.parse(row.payload) as T` |
+| Int bool codec | drizzle-zod transform：读 `n !== 0`、写 `? 1 : 0` | 对业务代码透明：经 zod parse 后自动是 boolean | `!!row.enabled` / 手动 `? 1 : 0` |
 | Service DTO 类型 | `$inferSelect` → `Pick`/`Omit`/`& { override }` | `export type FooDto = Pick<typeof schema.foo.$inferSelect, "a" | "b">` | 手写 `export interface FooDto { a: string; b: number }` |
 | 枚举/状态值 | 共享 `as const` 或 `z.enum`（位置：`types.ts` 或 feature 的 `entities.ts`） | `import { ISSUE_STATUSES }` / `z.enum([...])` | 各处重抄字面量联合 |
 | 迁移 | drizzle-kit generate 产出 `.sql` 文件 | `bun run db:gen`（或手动写 migration SQL） | 手动改 DB 不产 migration |
@@ -103,7 +103,7 @@ grep -rn '!!.*\.enabled\|!!.*\.autoOrchestrate\|.*enabled.*? 1 : 0\|.*enabled.*?
 └─────────────────────────────────────────────────────────┘
 ```
 
-**铁律**：数据只在一个方向流动——`schema.ts → types.ts → service.ts → http.ts`。反向依赖（service 定义类型让 schema 适配）视为架构违规。
+**铁律**：数据只在一个方向流动：`schema.ts → types.ts → service.ts → http.ts`。反向依赖（service 定义类型让 schema 适配）视为架构违规。
 
 ## 6. 与跨进程规则的边界
 
@@ -112,6 +112,6 @@ grep -rn '!!.*\.enabled\|!!.*\.autoOrchestrate\|.*enabled.*? 1 : 0\|.*enabled.*?
 | Backend **内部**类型链（drizzle → $inferSelect → service → http） | 本文 | `schema.ts` drizzle 表 |
 | Backend ↔ web ↔ lark-bot **跨进程**类型链（HTTP/SSE/env） | [`e2e-contract-rules.md`](./e2e-contract-rules.md) | Elysia `App` 类型（`export type App = typeof app`） |
 
-两层规则互补、不重叠。backend 内部改了表 → service 类型自动流到 http handler → http handler 返回体进 `App` 类型 → web/lark-bot 经 treaty 自动感知。**两套真源打通后，改一个 drizzle 列，全链 tsc 标红**——从 DB 列到前端组件的端到端类型安全。
+两层规则互补、不重叠。backend 内部改了表 → service 类型自动流到 http handler → http handler 返回体进 `App` 类型 → web/lark-bot 经 treaty 自动感知。**两套真源打通后，改一个 drizzle 列，全链 tsc 标红**：从 DB 列到前端组件的端到端类型安全。
 
 > 关联：[`design-philosophy.md`](./design-philosophy.md)（why）、[`e2e-contract-rules.md`](./e2e-contract-rules.md)（跨进程层）、[`2026-06-28-api-typesafe-elysia-eden.md`](../superpowers/specs/2026-06-28-api-typesafe-elysia-eden.md)（传输层落地 spec）。

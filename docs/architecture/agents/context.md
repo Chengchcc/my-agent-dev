@@ -14,7 +14,7 @@ used_by:
 ---
 
 # Agent Context
-> ⚠ **部分过时(2026-08-13)**:本页以"同一 Conversation 内多 Agent 各自消费历史"为出发点;ADR 0021 后一个对话只有一个 Agent,Context 是单 Agent 的语义历史投影。机制(fork/rollback/branch)不变,前提简化。现行模型见 [Agent 工作区与多后端](./workspace-and-backends.md)。
+> ⚠ **部分过时(2026-08-13)**：本页以"同一 Conversation 内多 Agent 各自消费历史"为出发点；ADR 0021 后一个对话只有一个 Agent，Context 是单 Agent 的语义历史投影。机制(fork/rollback/branch)不变，前提简化。现行模型见 [Agent 工作区与多后端](./workspace-and-backends.md)。
 
 Agent Context 解决一个产品级问题：同一个 Conversation 中，不同 Agent 实际消费的历史并不完全相同；同一个 Agent 还需要 fork、rollback、切换 branch 和可逆 summary。这个能力必须跨所有 Agent Backend 保持一致，因此属于 Product Backend。
 

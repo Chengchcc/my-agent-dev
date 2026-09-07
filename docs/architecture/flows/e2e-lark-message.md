@@ -60,7 +60,7 @@ sse-watcher 是飞书端唯一出站流入口。它监听 conversation SSE，解
 
 非终端帧（streaming）经 **L2 节流**（500ms 合并，同 messageId 覆盖），终端帧立即发送 + 最多 3 次指数退避重试。
 
-## surface.control — 对话重置
+## surface.control 触发对话重置
 
 Agent 可调用 `start_new_conversation` 工具请求开启新对话。Backend 创建新的 Conversation，在旧 conversation 的 ledger 中写入 `surface.control` entry。sse-watcher 检测到此 entry，将飞书 chat 重新绑定到新 conversation。
 

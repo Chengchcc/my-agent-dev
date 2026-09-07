@@ -1,6 +1,6 @@
 # 卡片 JSON 2.0 结构
 
-本文档介绍卡片 JSON 2.0 的整体结构和属性说明。
+本文档介绍卡片 JSON 2.0 的整体结构和属性。
 
 ## 概念说明
 
@@ -149,7 +149,7 @@
 
 字段 | 是否必填 | 描述
 ---|---|---
-schema | 否 | 卡片结构的版本声明。默认为 1.0 版本。要使用 JSON 2.0 结构，必须显示声明 2.0。可选值：<br>- 1.0：卡片 JSON 1.0 结构。详情参考[卡片 JSON 1.0 结构](https://open.larkoffice.com/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/card-json-structure)。<br>- 2.0：卡片 JSON 2.0 结构。支持更多字段和能力，如卡片流式更新能力、富文本组件（markdown）更多语法等。详情参考[卡片 JSON 2.0 不兼容变更&更新说明](https://open.larkoffice.com/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/card-json-v2-breaking-changes-release-notes)。
+schema | 否 | 卡片结构的版本声明。默认为 1.0 版本。要使用 JSON 2.0 结构，必须显式声明 2.0。可选值：<br>- 1.0：卡片 JSON 1.0 结构。详情参考[卡片 JSON 1.0 结构](https://open.larkoffice.com/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/card-json-structure)。<br>- 2.0：卡片 JSON 2.0 结构。支持更多字段和能力，如卡片流式更新能力、富文本组件（markdown）更多语法等。详情参考[卡片 JSON 2.0 不兼容变更&更新说明](https://open.larkoffice.com/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/card-json-v2-breaking-changes-release-notes)。
 config | 否 | 配置卡片的全局行为，包括流式更新模式（JSON 2.0 新增能力）、是否允许被转发、是否为共享卡片等。
 card_link | 否 | 指定卡片整体的点击跳转链接。你可以配置一个默认链接，也可以分别为 PC 端、Android 端、iOS 端配置不同的跳转链接。
 header | 否 | 标题组件相关配置。详情参考[标题](https://open.larkoffice.com/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/card-json-v2-components/content-components/title)组件。
@@ -244,7 +244,7 @@ color | 否 | Object | 空 | 分别为飞书客户端浅色主题和深色主题
   }
 ```
 card_link 下的各字段说明如下表所示。
-**注意事项**：**注意**
+**注意事项**：
 -   url 和各端的链接（android_url、ios_url、pc_url）必填其中一个。如果不填写 url，则必须完整填写 android_url、ios_url、pc_url 三个字段。如果同时填写了 url 和 android_url、ios_url、pc_url，url 字段生效。
 - 如果需要禁止某端进行跳转，可以将对应的参数值配置为 `lark://msgcard/unsupported_action`。
 
@@ -266,7 +266,7 @@ android_url | 否 | String | Android 端的链接地址。
 
 在卡片的`body`字段中，你需要添加卡片组件作为卡片正文内容，组件将按数组顺序纵向流式排列。了解卡片组件，参考[卡片 JSON 2.0 版本组件概述](https://open.larkoffice.com/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/card-json-v2-components/component-json-v2-overview)。
 
-在卡片 JSON  2.0 结构中，所有组件（标题组件除外）和元素（如 tag 为 plain_text 的文本元素）新增 element_id 属性，作为操作组件或元素的唯一标识。在同一张卡片内，该字段的值全局唯一。仅允许使用字母、数字和下划线，必须以字母开头，不得超过 20 字符。
+在卡片 JSON 2.0 结构中，所有组件（标题组件除外）和元素（如 tag 为 plain_text 的文本元素）新增 element_id 属性，作为操作组件或元素的唯一标识。在同一张卡片内，该字段的值全局唯一。仅允许使用字母、数字和下划线，必须以字母开头，不得超过 20 字符。
 ```json
 {
     "body": { // 卡片正文。

@@ -1,16 +1,16 @@
 # LLM 入口索引
 
-本目录主 Wiki 描述当前架构:Product Backend 拥有产品事实,四 Agent Backend(oma/claude/pi/omp)为每个 Agent Run spawn 一次性子进程执行;Agent 配置与记忆住在工作区文件里。页面可独立阅读;`status: deprecated` 表示 tombstone(历史概念,新设计不要引用);带 ⚠ banner 的页面部分过时。
+本目录主 Wiki 描述当前架构：Product Backend 拥有产品事实，四 Agent Backend(oma/claude/pi/omp)为每个 Agent Run spawn 一次性子进程执行；Agent 配置与记忆住在工作区文件里。页面可独立阅读；`status: deprecated` 表示 tombstone(历史概念，新设计不要引用)；带 ⚠ banner 的页面部分过时。
 
 ## 文档分区(2026-08-21,T6)
 
 | 区 | 路径 | 语义 |
 |---|---|---|
-| 活区-现状 | `docs/architecture/`(本目录) | 描述代码此刻真实样子,`last_verified_against_code` 可核对 |
-| 活区-决策 | `docs/adr/` | 决策档案;ADR 状态翻转必须同 PR 更新 `README.md` 索引 |
-| 归档 | `docs/superpowers/` | 历史 spec/plan/retro,**不代表当前架构**;死链/旧术语豁免 |
+| 活区-现状 | `docs/architecture/`(本目录) | 描述代码此刻真实样子，`last_verified_against_code` 可核对 |
+| 活区-决策 | `docs/adr/` | 决策档案；ADR 状态翻转必须同 PR 更新 `README.md` 索引 |
+| 归档 | `docs/superpowers/` | 历史 spec/plan/retro，**不代表当前架构**；死链/旧术语豁免 |
 
-`audit:docs` 门禁:活区相对链接必须存在(死链 >0 即红)、MANIFEST 收编文件必须存在、活区不得教已删除概念(词表见 `scripts/audit-docs.ts`)。
+`audit:docs` 门禁：活区相对链接必须存在(死链 >0 即红)、MANIFEST 收编文件必须存在、活区不得教已删除概念(词表见 `scripts/audit-docs.ts`)。
 
 ## 整体架构
 
@@ -73,7 +73,7 @@ Runtime 原生工具由子进程自己执行。History、审批等 Product Tool 
 1. `workflow.md`
 2. `backend/overview.md`
 
-关键结论：Workflow 是编排层身份（execution/node_run/pending_human），不是执行身份——agent 节点创建普通 Agent Run，script 节点走进程沙箱，human 节点挂起于 Web 表单。Artifact 是带类型产物（artifacts:// 引用），节点边界校验存在性。
+关键结论：Workflow 是编排层身份（execution/node_run/pending_human），不是执行身份：agent 节点创建普通 Agent Run，script 节点走进程沙箱，human 节点挂起于 Web 表单。Artifact 是带类型产物（artifacts:// 引用），节点边界校验存在性。
 
 
 ## Web
@@ -98,4 +98,4 @@ Oma 是 CLI 执行引擎（print/json/rpc 一次性 + TUI 交互终端），由 
 
 ## 结构化索引
 
-完整页面图谱见 `concepts.json`。已删除概念（span/attempt/session/daemon/checkpointer/Pet/Recap/多成员/Loop/CronJob）不保留文档页——历史见 `docs/adr/` 与 git 记录。
+完整页面图谱见 `concepts.json`。已删除概念（span/attempt/session/daemon/checkpointer/Pet/Recap/多成员/Loop/CronJob）不保留文档页：历史见 `docs/adr/` 与 git 记录。

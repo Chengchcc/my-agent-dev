@@ -41,7 +41,7 @@ Product Backend
 → atomic Product terminal commit
 ```
 
-一次 Agent Run = 一个子进程（oma）或一组 turn 级短进程（CLI 后端）= 一个 outcome。`runId` 是唯一执行身份；不存在跨 Run 的 session、resume 或 daemon——CLI 后端靠自身原生 session（`cliSessionRef`）续接上下文（ADR 0019 双轨真理）。
+一次 Agent Run = 一个子进程（oma）或一组 turn 级短进程（CLI 后端）= 一个 outcome。`runId` 是唯一执行身份；不存在跨 Run 的 session、resume 或 daemon：CLI 后端靠自身原生 session（`cliSessionRef`）续接上下文（ADR 0019 双轨真理）。
 
 ## 容器视图
 
@@ -129,14 +129,14 @@ Agent Run 是 Product Backend 的持久执行对象。它固定 Agent、Context 
 completed | failed | aborted | timeout
 ```
 
-这是 Agent Run 终态的唯一依据 —— 事件流永远不能决定终态。`completed` 携带最终 assistant Message（MessageRevision，messageId = `run:<runId>:assistant:0`）。
+这是 Agent Run 终态的唯一依据，事件流永远不能决定终态。`completed` 携带最终 assistant Message（MessageRevision，messageId = `run:<runId>:assistant:0`）。
 
 ### 两类历史
 
 - **Conversation History**：共享会话事实，人类与 Agent 的最终可见 Message、成员事件、产品控制条目。
 - **Agent Context**：每个 conversation 的语义上下文（1:1，tree 单键）；保存共享 Message ref（ledger_seq）、Product Tool 结果、私有语义、summary 与 Context Branch。
 
-Agent Run 从 active Context Branch 投影完整线性 `ProjectedHistoryItem[]` 交给子进程 —— **每次都是 full projection**，没有增量恢复。
+Agent Run 从 active Context Branch 投影完整线性 `ProjectedHistoryItem[]` 交给子进程，**每次都是 full projection**，没有增量恢复。
 
 ### 工具边界
 

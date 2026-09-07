@@ -1,6 +1,6 @@
 # 打包清单
 
-- `docs/adr/README.md`(索引;0001–0026 全部 ADR 在此目录)
+- `docs/adr/README.md`（索引；0001–0026 全部 ADR 在此目录）
 - `README.md`
 - `docs/architecture/README.md`
 - `docs/architecture/workflow.md`

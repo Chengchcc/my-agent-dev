@@ -58,7 +58,7 @@ Streaming delta、Live Updates、子进程 stderr 都是投影/诊断，不进�
 | 实时投影 | streaming delta、status、SSE buffer | 否 | 是 |
 | 执行审计 | surface_health、agent_run 终态、product_tool_call | 否 | 否（但保留为事实记录） |
 
-注意：`agent_run` 的 terminal_result 与 `product_tool_call` 是持久审计事实，但它们不参与 context build —— 语义恢复只依赖 Ledger + Tree。
+注意：`agent_run` 的 terminal_result 与 `product_tool_call` 是持久审计事实，但它们不参与 context build：语义恢复只依赖 Ledger + Tree。
 
 ## Message 何时成为产品事实
 

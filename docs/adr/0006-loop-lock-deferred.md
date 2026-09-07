@@ -1,10 +1,10 @@
 # ADR 0006: Loop 粒度写锁、原子预算、并发池 — MVP 不做
 
-> ⚠ **状态更新(2026-08-21,第三次翻转)**:workflow-first 重写(ADR 0025)后三项事实为——**写锁已落地**(`loop-lock.ts` Map-based Promise chain,`withLoopLock` 串行化 cron/manual/review 三入口,含 HTTP/cron 调用点);**原子预算已落地**(`loop_budget` 表 + workflow run 冻结 `workflowBudgetTokens`);**并发池未做**(loopStep 对 fixing items 逐个串行执行,预算闸门内——多 item 并行无需求,以串行替代)。
+> ⚠ **状态更新(2026-08-21，第三次翻转)**：workflow-first 重写(ADR 0025)后，三项事实为：**写锁已落地**(`loop-lock.ts` Map-based Promise chain，`withLoopLock` 串行化 cron/manual/review 三入口，含 HTTP/cron 调用点)；**原子预算已落地**(`loop_budget` 表 + workflow run 冻结 `workflowBudgetTokens`)；**并发池未做**(loopStep 对 fixing items 逐个串行执行，预算闸门内，多 item 并行无需求，以串行替代)。
 
 ## 状态
 
-Implemented(写锁+预算;并发池以串行替代)
+Implemented(写锁+预算；并发池以串行替代)
 
 ## 上下文
 
@@ -14,10 +14,10 @@ PRD 对这三个设计约束要求"P0 必做"：
 2. **原子预算计数**：per-loop token 计数走带锁/CAS，不落 STATE.md
 3. **AgentSession 并发池**：`maxParallelFindings` + 进程级池，防多-finding Loop 打满进程
 
-M4 是 MVP 最后一棒：cron 触发 loopStep()、fireLoop() 自管 retry/timeout。上述三件事的触发条件在 M4 都还不成立：
+M4 是 MVP 最后一棒：cron 触发 loopStep()、fireLoop() 自管 retry/timeout。这三件事的触发条件在 M4 都还不成立：
 
 - **写锁**：M4 只有 cron 一条入口（手动触发/POST review 在 M5）。`inFlight` 锁已保证 cron 不重叠。
-- **预算计数**：M4 用硬编码 model name，没有真实 LLM 调用——token 消耗为 0。预算需要在真实 model 接线后（M5 LOOP.md 落地）才有意义。
+- **预算计数**：M4 用硬编码 model name，没有真实 LLM 调用，token 消耗为 0。预算需要在真实 model 接线后（M5 LOOP.md 落地）才有意义。
 - **并发池**：`loopStep()` 只处理一个 fixing item（串行）。M4 不引入并发。
 
 ## 决策

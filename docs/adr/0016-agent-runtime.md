@@ -8,7 +8,7 @@
 
 ## 问题
 
-### 1. 中间层被架空
+### 中间层被架空
 
 ```
 L3 harness    AgentSession     ← pet/recap/memory 全部挂这层的 subscribe()
@@ -18,17 +18,17 @@ L1 core       run()            ← 正常运行
 
 `framework` 的 `HookContext` 看不到 `modelRegistry` / `settings` / `conversationPort`，所以需要这些能力的 hook 只能绕到 `harness` 层。每加一个新功能都在腐化架构。
 
-### 2. Backend 是 monolithic composition root
+### Backend 是 monolithic composition root
 
 `main.ts` 手写所有服务的创建和接线，加一个新功能要改 3 处（插件本身、conversation-compose、main.ts）。Pet/Recap/Memory 的 model 创建逻辑在 conversation-compose 里重复了 3 次。
 
-### 3. 命名暴露实现细节
+### 命名暴露实现细节
 
-`Checkpointer`（应该是 `SessionStore`）、`ChatModel`（应该是 `Model`）、`context store`（应该是 `RunState`）——这些名字告诉读者"怎么做的"而不是"做什么的"。
+`Checkpointer`（应该是 `SessionStore`）、`ChatModel`（应该是 `Model`）、`context store`（应该是 `RunState`）。这些名字告诉读者"怎么做的"而不是"做什么的"。
 
 ## 决策
 
-### 1. 两层架构
+### 两层架构
 
 ```
 旧: harness (AgentSession) -> framework (createAgent + PluginHooks) -> core (run)
@@ -38,7 +38,7 @@ L1 core       run()            ← 正常运行
 - `PluginHooks` → 升级为 typed `AgentHooks`（event + handler + return value）
 - `Harness` 包 → 撤销，剩余非 Agent 职能（span 管理）留在 backend
 
-### 2. Agent SDK 与 Plugin 系统
+### Agent SDK 与 Plugin 系统
 
 `packages/agent` 不只是 Agent 生命周期类，还提供通用 Agent SDK。公共入口是 `createAgentSession()`，负责：
 
@@ -70,13 +70,13 @@ interface CreateAgentSessionInput {
 
 `identityPlugin`、`progressiveSkillPlugin`、`conversationContextPlugin`、`todoPlugin`、`goalPlugin`、`petPlugin`、`recapPlugin` 和 `memoryPlugin` 当前都保持 Plugin 形态。Backend 负责提供它们所需的业务参数，但不实现第二套通用 Agent composer。
 
-### 3. Capability：已删除
+### Capability：已删除
 
 此前设计的 backend `Capability → AgentExtension → Registry` 链路已在 P8 删除。它会把普通 Plugin 的安装增加多层包装，重复 Agent SDK 的组装职责。
 
 当前不保留 Capability wrapper。未来若有跨 runtime/backend/surface 的产品功能，基于当时需求重新设计；不预留 Capability 类型或 wrapper。
 
-### 4. Future Pi-style Extension
+### Future Pi-style Extension
 
 如果未来需要类似 Pi 的动态扩展，再单独设计 `ExtensionRuntime`：
 
@@ -112,13 +112,13 @@ jiti loader
 - slots 和 jiti Extension 属于未来设计，不进入当前 runtime migration。
 
 
-### 3. Services 接口
+### Services 接口
 
 Agent 不直接依赖外部系统。Backend 负责创建共享基础设施；Plugin 的 options 由 backend 组装并传入 `createAgentSession()`。
 
 通用 Agent SDK 不依赖 `SettingsService`、`ConversationPort`、Elysia、React 或 backend 数据库。
 
-### 4. 命名对齐
+### 命名对齐
 
 | 旧 | 新 | 理由 |
 |----|-----|------|
@@ -133,7 +133,7 @@ Agent 不直接依赖外部系统。Backend 负责创建共享基础设施；Plu
 | `ContextStore` | `RunState` | ✅ P10-2 唯一公共类型 |
 | `steering / followUp` | 保留独立语义 | 不是同一 interrupt(input) |
 
-### 5. 包结构
+### 包结构
 
 ```text
 旧:
@@ -148,7 +148,7 @@ Agent 不直接依赖外部系统。Backend 负责创建共享基础设施；Plu
 @chengchenccc/agent            ← Agent + SDK + Plugin assembly
 ```
 
-### 6. Agent Hooks 设计
+### Agent Hooks 设计
 
 ```typescript
 interface AgentHooks {

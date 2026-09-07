@@ -15,22 +15,22 @@
 
 ---
 
-my-agent-team 是一个**团队级 Agent 运行时**。每个 Agent 有独立的工作区（身份、技能、MCP、记忆都是工作区里的文件），运行时可以选择自研 oma 或 claude / pi / omp 四种后端，各自用原生 session 续接上下文。对话在 Web 控制台和飞书群里实时同步，Agent 由 Product Backend 按 Run 调度执行——不掉消息、不重复、所有端看到的状态一致。
+my-agent-team 是一个**团队级 Agent 运行时**。每个 Agent 有独立的工作区（身份、技能、MCP、记忆都是工作区里的文件），运行时可以选择自研 oma 或 claude / pi / omp 四种后端，各自用原生 session 续接上下文。对话在 Web 控制台和飞书群里实时同步，Agent 由 Product Backend 按 Run 调度执行：不掉消息、不重复、所有端看到的状态一致。
 
 ## ✨ Highlights
 
-- **四后端可切换** — 自研 oma 与 claude / pi / omp 任一运行,agent 级配置、每 Run 冻结,切后端不丢上下文(各自原生 session 续接,产品只存一个引用)
-- **Agent 工作区即配置** — 身份(SOUL/USER)、技能、MCP、产品工具、知识库都是工作区里的文件(AGENTS.md / `.mcp.json` / `.<kind>/skills`),后端自动桥接,人类可直接改文件
-- **一个对话一个 Agent** — 对话是 Agent session 的产品态投影;多 Agent 协作 = 多个对话投影到同一件事情(Work)上
-- **多 Provider 多协议** — 支持 Anthropic Messages、OpenAI Chat Completions、OpenAI Responses 三种 API 协议;builtin provider 只需环境有 API Key 即自动生效;用户通过 `~/.oma/models.yml` 添加自定义 provider
-- **Thinking/Reasoning** — 全链路支持 Anthropic extended thinking、DeepSeek reasoning_content、OpenAI reasoning_effort;Web UI 可选 thinking level
-- **终端 TUI（oma）** — 独立交互式终端:流式渲染、工具调用/结果、thinking 与 tool detail 切换、mermaid ASCII 图、`/resume` 与 `/fork`、模型选择持久化到项目 `.oma/settings.json`,composer loader 实时摘要当前动作
-- **双端同步** — Web 控制台 + 飞书(Lark IM)Bot,同一条对话两边实时可见
-- **对话账本** — canonical conversation store(conversation_ledger),所有消息经单一入口写入,端只做渲染
-- **Agent Run 执行链** — 每个 Run 由 Agent Backend spawn 一次性子进程(stdin/stdout JSONL RPC),BackendRunOutcome 是唯一终态,terminal commit 原子写入 History + Context
+- **四后端可切换** — 自研 oma 与 claude / pi / omp 任一运行，agent 级配置、每 Run 冻结，切后端不丢上下文（各自原生 session 续接，产品只存一个引用）
+- **Agent 工作区即配置** — 身份（SOUL/USER）、技能、MCP、产品工具、知识库都是工作区里的文件（AGENTS.md / `.mcp.json` / `.<kind>/skills`），后端自动桥接，人类可直接改文件
+- **一个对话一个 Agent** — 对话是 Agent session 的产品态投影；多 Agent 协作 = 多个对话投影到同一件事情（Work）上
+- **多 Provider 多协议** — 支持 Anthropic Messages、OpenAI Chat Completions、OpenAI Responses 三种 API 协议；builtin provider 只需环境有 API Key 即自动生效；用户通过 `~/.oma/models.yml` 添加自定义 provider
+- **Thinking/Reasoning** — 全链路支持 Anthropic extended thinking、DeepSeek reasoning_content、OpenAI reasoning_effort；Web UI 可选 thinking level
+- **终端 TUI（oma）** — 独立交互式终端：流式渲染、工具调用/结果、thinking 与 tool detail 切换、mermaid ASCII 图、`/resume` 与 `/fork`、模型选择持久化到项目 `.oma/settings.json`，composer loader 实时摘要当前动作
+- **双端同步** — Web 控制台 + 飞书（Lark IM）Bot，同一条对话两边实时可见
+- **对话账本** — canonical conversation store（conversation_ledger），所有消息经单一入口写入，端只做渲染
+- **Agent Run 执行链** — 每个 Run 由 Agent Backend spawn 一次性子进程（stdin/stdout JSONL RPC），BackendRunOutcome 是唯一终态，terminal commit 原子写入 History + Context
 - **Agentic Workflow** — 声明式节点图（agent/script/human + 条件边 + cron 触发）：agent 节点派发 Agent Run、script 节点进程沙箱执行、human 节点 Web 表单；产物经 Artifact 在节点间流转，Web 可视化编排与调试
-- **Product Tools** — History 读写等产品能力由 Product Backend 统一执行(幂等 + 审计)
-- **SQLite 单文件存储** — backend.db,零运维部署
+- **Product Tools** — History 读写等产品能力由 Product Backend 统一执行（幂等 + 审计）
+- **SQLite 单文件存储** — backend.db，零运维部署
 
 ## 📸 Screenshots
 
@@ -104,7 +104,7 @@ providers:
 
 详细架构见 [`docs/architecture/system-overview.md`](docs/architecture/system-overview.md)（执行链、分层、不变量）。
 
-> **Oma 启动方式**：开发环境 `bun run dev` 开箱即用——Backend 自动用 Bun 运行 `apps/oh-my-agent/src/cli.ts`，无需全局安装或 `bun link`。生产环境通过 `OMA_BIN` 指向构建后的 `apps/oh-my-agent/dist/cli.js` 绝对路径（详见 `apps/backend/.env.example`）。
+> **Oma 启动方式**：开发环境 `bun run dev` 开箱即用，Backend 自动用 Bun 运行 `apps/oh-my-agent/src/cli.ts`，无需全局安装或 `bun link`。生产环境通过 `OMA_BIN` 指向构建后的 `apps/oh-my-agent/dist/cli.js` 绝对路径（详见 `apps/backend/.env.example`）。
 > **npm 包**：`@chengchenccc/oh-my-agent` —— [https://www.npmjs.com/package/@chengchenccc/oh-my-agent](https://www.npmjs.com/package/@chengchenccc/oh-my-agent)
 
 ## 📦 仓库结构
@@ -152,8 +152,8 @@ bun run build       # 全仓构建（turbo）
 ```
 
 > **数据库升级策略**：迁移只保证 fresh-boot 路径。改动 schema 后若旧开发库
-> 启动异常，直接删掉 `apps/backend/.backend-data/` 重启即可（开发数据,非持久
-> 事实）——不存在 in-place 升级路径,旧库兼容问题不修。
+> 启动异常，直接删掉 `apps/backend/.backend-data/` 重启即可（开发数据，非持久
+> 事实）：不存在 in-place 升级路径，旧库兼容问题不修。
 
 ## 📄 License
 

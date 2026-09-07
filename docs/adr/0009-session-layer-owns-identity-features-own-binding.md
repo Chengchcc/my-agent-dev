@@ -1,6 +1,6 @@
 # ADR 0009: SessionManager + ctx.span — 身份自洽，追踪归 framework，业务上浮，harness 不泄
 
-> ⚠ **已过期(2026-08-13)**:SessionManager/ctx.span 与 packages/framework 已随 Phase 6 整体删除(run-centric 重写,见 ADR 0016/0019)。本文的身份/追踪分层设计不再对应任何现有代码。
+> ⚠ **已过期(2026-08-13)**：SessionManager/ctx.span 与 packages/framework 已随 Phase 6 整体删除(run-centric 重写，见 ADR 0016/0019)。本文的身份/追踪分层设计不再对应任何现有代码。
 
 ## 状态
 
@@ -16,7 +16,7 @@ ADR 0008 决定塌缩 harness 调用层，删除 `SessionFactory` / `SessionSpec
 
 **缺口 3：追踪逻辑散到每个 feature。** `executeAgentRun` 绑定了 DB 追踪（insertSpanOrigin）、run/attempt 生命周期（startMainRun/notifyRunComplete）、session 创建+执行。删掉 executeAgentRun 后，追踪逻辑散到 conversation/cron/orchestrator 三处复制粘贴。
 
-**缺口 4：技术概念泄漏到 feature，业务概念被困在技术组装里。** feature 层 `insertSpanOrigin`（技术操作）和 `startSpan` 注入（技术注入）重复出现在每个 feature。同时 `conversationContextPlugin` 把 per-run 业务数据（conversationId/surface/senderName/input）烤进 per-session plugin 的 systemPrompt——第二条消息的 agent 看到第一条消息的 trigger。
+**缺口 4：技术概念泄漏到 feature，业务概念被困在技术组装里。** feature 层 `insertSpanOrigin`（技术操作）和 `startSpan` 注入（技术注入）重复出现在每个 feature。同时 `conversationContextPlugin` 把 per-run 业务数据（conversationId/surface/senderName/input）烤进 per-session plugin 的 systemPrompt，第二条消息的 agent 看到第一条消息的 trigger。
 
 ## 决策
 
@@ -66,7 +66,7 @@ interface SessionManager {
 }
 ```
 
-SessionManager 统一注入 `startSpan`——feature 不传，create/open 内部接：
+SessionManager 统一注入 `startSpan`，feature 不传，create/open 内部接：
 
 ```typescript
 class SqliteSessionManager {
@@ -255,7 +255,7 @@ conversation 第二条消息（进程重启后）
 - **AgentSession** 使用它（prompt 前 load、结束后 save、interrupt）
 - **caller** 永远碰不到它
 
-与 pi 的对比：pi 把身份和存储合一（SessionManager 就是 JSONL 文件）。我们拆开——SessionManager 拥有 sessionId，Checkpointer 存消息，两者以 sessionId 连接。拆开的原因是 checkpointer 还存 interrupt state / checkpoint events，跟「session 管理」是不同关注点。
+与 pi 的对比：pi 把身份和存储合一（SessionManager 就是 JSONL 文件）。我们拆开：SessionManager 拥有 sessionId，Checkpointer 存消息，两者以 sessionId 连接。拆开的原因是 checkpointer 还存 interrupt state / checkpoint events，跟「session 管理」是不同关注点。
 
 ### 实现可演进
 
@@ -289,7 +289,7 @@ SessionManager 接口不变，实现可换：
 
 #### A. AgentSessionConfig 拆分为 SessionConfig + SessionEnv
 
-原有 `AgentSessionConfig` 包含三类字段：caller 传入的业务能力声明（model/tools/plugins/contextManager）、SessionManager 注入的技术字段（sessionId/checkpointer/startSpan）、可选的 harness 内部配置（retry/compaction/maxSteps）。三者混在一个 interface 里，靠 `Omit` 做 caller 侧的防御——脆弱且不自我文档化。
+原有 `AgentSessionConfig` 包含三类字段：caller 传入的业务能力声明（model/tools/plugins/contextManager）、SessionManager 注入的技术字段（sessionId/checkpointer/startSpan）、可选的 harness 内部配置（retry/compaction/maxSteps）。三者混在一个 interface 里，靠 `Omit` 做 caller 侧的防御，脆弱且不自我文档化。
 
 **决策**：拆为两个类型。
 
@@ -333,7 +333,7 @@ compaction、retry、queue_update、interrupted、agent_start——全部留在 
 
 #### C. buildAgentConfig 删除——feature 内联组装
 
-`buildAgentConfig`（原名 `buildSessionSpec`）是 session-factory 模式的残留。它把 7 个参数打包成一个袋子返回 `{ model, tools, plugins, contextManager }`——但内部只用到 `agent.modelName` 一个字段，`agent.modelProvider` 零引用，`agent.modelBaseUrl` 被 config 覆盖。`agent` 和 `agentId` 重复（agentId 只用于算 cwd）。
+`buildAgentConfig`（原名 `buildSessionSpec`）是 session-factory 模式的残留。它把 7 个参数打包成一个袋子返回 `{ model, tools, plugins, contextManager }`，但内部只用到 `agent.modelName` 一个字段，`agent.modelProvider` 零引用，`agent.modelBaseUrl` 被 config 覆盖。`agent` 和 `agentId` 重复（agentId 只用于算 cwd）。
 
 **决策**：删整个文件。各 feature 用纯函数内联组装。
 
@@ -394,6 +394,7 @@ const session = existingSid
 - 删除 `deriveSessionId` / `parseSessionId` / `SessionSpec` / `executeAgentRun` / `span-executor.ts`
 - config 重建非持久化——sessionId 是持久句柄，model/tools/plugins 从 agent 表 + backend config 重新组装
 - 进程重启后 conversation 记忆连续（checkpointer + 持久化 sessionId 绑定）
++
 ## 关联
 
 - [ADR 0008](./0008-collapse-harness-invocation-layer.md) — 塌缩 harness 调用层（本 ADR 修正其复用缺口 + 追踪散落 + 技术泄漏问题）

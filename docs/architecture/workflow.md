@@ -67,7 +67,7 @@ cron 到点(Bun.cron trigger-scheduler) / 手动 POST / 模板实例化
 ## 不变量
 
 1. 引擎纯函数；路由完成时冻结，永不重算
-2. script 节点永远经进程沙箱（进程边界，非 fs jail——ADR 0026 边界内接受）
+2. script 节点永远经进程沙箱（进程边界，非 fs jail；ADR 0026 边界内接受）
 3. agent 节点输出必须过 outputSchema（失败→带错误反馈重试→节点 failed）
 4. 节点失败逐节点记录（node_run.error），execution 以 failure 终态，不整图静默
 5. Artifact 引用在节点边界校验存在性（不存在即节点失败）

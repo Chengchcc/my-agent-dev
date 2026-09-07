@@ -7,9 +7,7 @@ summary: "Agent 每次设计、评审、修复系统时应遵循的指导思想�
 
 ## 目的
 
-这不是一份实现方案，也不是某个模块的重构 spec。
-
-这是一份给 Agent 和工程师使用的**架构判断准则**：每次新增概念、修复问题、写文档、做代码 review、设计 API 前，都先用它检查自己有没有把系统推向不必要的复杂度。
+这是一份给 Agent 和工程师使用的**架构判断准则**，不是实现方案，也不是某个模块的重构 spec。每次新增概念、修复问题、写文档、做代码 review、设计 API 前，都先用它检查自己有没有把系统推向不必要的复杂度。
 
 核心目标只有一个：
 
@@ -28,11 +26,11 @@ summary: "Agent 每次设计、评审、修复系统时应遵循的指导思想�
 它会不会让下一个 Agent 多学一层心智模型？
 ```
 
-如果一个新设计让系统出现更多相似但不完全相同的名词，它通常不是抽象升级，而是概念债。
+如果一个新设计让系统出现更多相似但不完全相同的名词，它通常是概念债，不是抽象升级。
 
-## 第一原则
+## 核心原则
 
-### 1. 先统一语义，再选择机制
+### 先统一语义，再选择机制
 
 不要先从表、日志、队列、stream、projection、checkpoint 出发设计系统。
 
@@ -60,7 +58,7 @@ Message 是领域对象。
 Ledger、执行事实流、Web 只是保存、记录、渲染或投递 Message 的不同场景。
 ```
 
-### 2. 同一语义对象只能有一个本体
+### 同一语义对象只能有一个本体
 
 如果多个对象拥有相同的身份、内容、生命周期和状态，它们就不应该被设计成多个领域模型。
 
@@ -75,7 +73,7 @@ Ledger、执行事实流、Web 只是保存、记录、渲染或投递 Message �
 
 如果答案是"是"，那它们应该共用同一个本体。
 
-### 3. 实现机制不能上浮成业务心智
+### 实现机制不能上浮成业务心智
 
 有些机制是必要的：append-only log、event audit、projection、checkpoint、delivery binding、retry queue。
 
@@ -97,7 +95,7 @@ RunEvent 进入执行事实流，再由 Projection 写 LedgerEntry，再由 watc
 
 后者可以存在于底层实现说明，但不应该成为所有功能开发者必须理解的入口。
 
-### 4. 边界要硬，概念要少
+### 边界要硬，概念要少
 
 系统可以有多个边界，但不能每个边界都重新发明核心对象。
 
@@ -127,7 +125,7 @@ Index
 
 业务边界回答"这是什么"。机制边界回答"它怎么被保存、观察、恢复或投递"。
 
-### 5. 名字就是架构
+### 名字就是架构
 
 命名不是表面问题。名字会决定后续 Agent 怎么理解系统。
 
@@ -155,7 +153,7 @@ Message render state
 
 这些名字说明本体仍然是 Message，其他只是语境。
 
-### 6. Projection is mechanism, not the main thread
+### Projection is mechanism, not the main thread
 
 Projection 是一种实现方式：从一种事实记录生成另一种读模型。
 
@@ -173,9 +171,9 @@ Run emits Message to Conversation.
 append event -> project -> append storage -> notify surface
 ```
 
-但这不是主心智。
+但这条链是实现层的细节，不是主心智。
 
-### 7. 控制环需要统一内模
+### 控制环需要统一内模
 
 Agent 系统是一个控制系统：它读取状态，采取行动，观察反馈，再继续行动。
 
@@ -183,9 +181,9 @@ Agent 系统是一个控制系统：它读取状态，采取行动，观察反�
 
 对我们的系统来说，这意味着 Agent、Run、Conversation、Surface、Checkpoint 不能各自持有一套漂移的 message 模型。否则控制环会碎：某层认为完成，另一层仍在等待；某层认为同一条消息，另一层发成多条；某层知道需要审批，另一层无法渲染操作。
 
-统一domain entity不是洁癖，是让控制环稳定。
+统一 domain entity 是让控制环稳定，不是洁癖。
 
-### 8. 警惕模块边界变成领域边界
+### 警惕模块边界变成领域边界
 
 Conway 定律描述了组织沟通结构和系统结构之间的对应关系。在代码中，同样容易出现"模块结构复制成领域结构"的问题。
 
@@ -352,7 +350,7 @@ Delivery 引用 message.id。
 - 新类型名称里包含 storage 或 transport 名称，例如 `LedgerXxx`、`StreamXxx`、`CheckpointXxx`。
 - 修一个消息 bug 必须同时修改 backend、framework、web、lark 四套不同 message parser。
 
-这些不是"系统复杂所以正常"，而是概念债正在扩散。
+出现这些情况说明概念债正在扩散，不能拿"系统复杂所以正常"当解释。
 
 ## 允许复杂的地方
 
@@ -441,5 +439,5 @@ Agent 做 code review 时，除了找 bug，还要找概念债：
 
 ## 关联页面
 
-- [依赖注入](foundations/dependency-injection.md) —— DI 是这套哲学在协作关系上的投影
-- [标识符体系](foundations/identifiers.md) —— 实体主键与 runId 唯一执行身份
+- [依赖注入](foundations/dependency-injection.md)：DI 是这套哲学在协作关系上的投影
+- [标识符体系](foundations/identifiers.md)：实体主键与 runId 唯一执行身份

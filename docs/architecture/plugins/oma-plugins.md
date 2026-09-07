@@ -3,7 +3,7 @@ id: plugins.oma-plugins
 title: Oma 插件与 HITL
 status: current
 owners: architecture
-summary: "oma 插件系统（core/plugins/）:多源 manifest（oma plugin.json → .claude-plugin/plugin.json → package.json omp/pi 字段）+ 冲突矩阵;代码组件经 Bun 原生 import 加载（PluginTool[]/PluginHooks 形状校验）;信任矩阵 = 目录 sha256 + agentDir/trusted-plugins.json + scope×mode 矩阵（RPC 永不加载 project-scope 代码）;marketplace 多源 catalog（git 源记录 HEAD rev）。HITL 审批链 = permissionMode(ask/deny/auto) 门控 + approval_request → resolve_approval + 超时 fail-closed。"
+summary: "oma 插件系统（core/plugins/）：多源 manifest（oma plugin.json → .claude-plugin/plugin.json → package.json omp/pi 字段）+ 冲突矩阵；代码组件经 Bun 原生 import 加载（PluginTool[]/PluginHooks 形状校验）；信任矩阵 = 目录 sha256 + agentDir/trusted-plugins.json + scope×mode 矩阵（RPC 永不加载 project-scope 代码）；marketplace 多源 catalog（git 源记录 HEAD rev）。HITL 审批链 = permissionMode（ask/deny/auto）门控 + approval_request → resolve_approval + 超时 fail-closed。"
 depends_on:
   - runtime.oma
   - agents.workspace-and-backends
