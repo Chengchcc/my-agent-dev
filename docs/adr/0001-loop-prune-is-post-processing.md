@@ -6,7 +6,7 @@ Accepted
 
 ## 上下文
 
-Loop 的 item 有四个终态：`resolved`、`inbox`（驳回/耗尽）、`promoted`。
+Loop 的 item 有三个终态：`resolved`、`inbox`（驳回/耗尽）、`promoted`。
 
 - `resolved` / `promoted`：纯终结，留在 STATE.md 没意义，应清理
 - `inbox`：人驳回或返工耗尽的 item，人未来可能想捡回来继续跑，不应消失

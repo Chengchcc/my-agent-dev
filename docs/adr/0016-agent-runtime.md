@@ -72,7 +72,7 @@ interface CreateAgentSessionInput {
 
 ### Capability：已删除
 
-此前设计的 backend `Capability → AgentExtension → Registry` 链路已在 P8 删除。它会把普通 Plugin 的安装增加多层包装，重复 Agent SDK 的组装职责。
+此前设计的 backend `Capability → AgentExtension → Registry` 链路已在 P8 删除。它会给普通 Plugin 的安装套上多层包装，重复 Agent SDK 的组装职责。
 
 当前不保留 Capability wrapper。未来若有跨 runtime/backend/surface 的产品功能，基于当时需求重新设计；不预留 Capability 类型或 wrapper。
 

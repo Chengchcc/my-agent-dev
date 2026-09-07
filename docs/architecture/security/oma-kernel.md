@@ -90,7 +90,7 @@ hostname 字符串，不校验实际连接的 IP——公网域名可以在校�
 `docs/future-work.md` 中「native tools are unaffected」的表述是同一过时来源。
 仍未做的是「allow-rules 级别的细粒度 native 权限系统」（仍是 follow-up）。
 
-### 插件信任链是最成熟的块
+### 插件信任链最成熟
 
 `apps/oh-my-agent/src/core/plugins/plugin-trust.ts` + `plugin-resolve.ts`：
 

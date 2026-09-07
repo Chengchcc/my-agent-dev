@@ -22,7 +22,7 @@
 以下为卡片 JSON 2.0 的整体结构。
 ```JSON
 {
-    "schema": "2.0", // 卡片 JSON 结构的版本。默认为 1.0。要使用 JSON 2.0 结构，必须显示声明 2.0。
+    "schema": "2.0", // 卡片 JSON 结构的版本。默认为 1.0。要使用 JSON 2.0 结构，必须显式声明 2.0。
     "config": {
         "streaming_mode": true, // 卡片是否处于流式更新模式，默认值为 false。
         "streaming_config": {}, // 流式更新配置。详情参考下文。
@@ -145,7 +145,7 @@
 }
 ```
 各个字段说明如下所示。
-若这些字段均不传，则卡片 JSON 为 "{}"。飞书开放平台支持发送卡片 JSON 为 "{}" 的空白卡片。
+若这些字段均不传，则卡片 JSON 为 "{}"，飞书开放平台支持直接发送这样的空白卡片。
 
 字段 | 是否必填 | 描述
 ---|---|---
@@ -163,13 +163,13 @@ body | 否 | 卡片正文，包含一个名为 elements 的数组，用于放置
   "config": {
     "streaming_mode": true, // 卡片是否处于流式更新模式，默认值为 false。
     "streaming_config": { // 流式更新配置。
-      "print_frequency_ms": { // // 流式更新频率，单位：ms
+      "print_frequency_ms": { // 流式更新频率，单位：ms
         "default": 30,
         "android": 25,
         "ios": 40,
         "pc": 50
       },
-      "print_step": {  // // 流式更新步长，单位：字符数
+      "print_step": {  // 流式更新步长，单位：字符数
         "default": 2,
         "android": 3,
         "ios": 4,
@@ -264,7 +264,7 @@ android_url | 否 | String | Android 端的链接地址。
 
 ### 卡片正文 `body`
 
-在卡片的`body`字段中，你需要添加卡片组件作为卡片正文内容，组件将按数组顺序纵向流式排列。了解卡片组件，参考[卡片 JSON 2.0 版本组件概述](https://open.larkoffice.com/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/card-json-v2-components/component-json-v2-overview)。
+`body` 字段放卡片组件，即卡片正文内容，组件按数组顺序纵向流式排列。了解卡片组件，参考[卡片 JSON 2.0 版本组件概述](https://open.larkoffice.com/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/card-json-v2-components/component-json-v2-overview)。
 
 在卡片 JSON 2.0 结构中，所有组件（标题组件除外）和元素（如 tag 为 plain_text 的文本元素）新增 element_id 属性，作为操作组件或元素的唯一标识。在同一张卡片内，该字段的值全局唯一。仅允许使用字母、数字和下划线，必须以字母开头，不得超过 20 字符。
 ```json

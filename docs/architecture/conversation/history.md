@@ -49,7 +49,7 @@ Conversation History 保存共享 Message 的唯一身份和内容。Agent Conte
 
 Agent 被触发时，Product Backend 根据可见性、addressedTo、mention、trigger mode 和 context budget，选择这个 Agent 实际消费的 Message refs，并追加到当前 Context Branch。
 
-未触发的消息不积累无关 History。
+Agent 未被触发时，不积累 Message ref。
 
 ## Agent Message
 

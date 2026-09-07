@@ -11,7 +11,7 @@
 | 结构化的语法级别修改 | `ast_grep` / `ast_edit` / `lsp` `rename` |
 
 **禁止：**
-- **禁止使用 `sed`，禁止使用 Python `open/write` 修改文件**。这些方法不提供 diff 预览、不回滚出错、不留审计轨迹、容易被 biome 的 `organizeImports` 或 turbo 缓存静默覆盖。
+- **禁止使用 `sed`，禁止使用 Python `open/write` 修改文件**。这些方法不提供 diff 预览、出错不回滚、不留审计轨迹、容易被 biome 的 `organizeImports` 或 turbo 缓存静默覆盖。
 - **禁止链式 `sed` 调用**。多步编辑使用 `edit` 的多个 `SWAP`/`INS` 块，单次原子提交。
 - **禁止在 bash heredoc 中写多行代码**。多行程序写入使用 `write` 工具。
 

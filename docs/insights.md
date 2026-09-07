@@ -35,7 +35,7 @@
 
 ## I2 已「闭环」的功能仍被整体替换：删除成本才是架构决策的真实成本
 
-**我们观察到** Loop 自 07-02 开发，08-20 ADR 0025 宣布闭环（Doctor 巡检、defer、taskClass、verifyCommands 全落地），**08 天后（08-28，d35e7dd6）整体删除**，由 4 天前才诞生的 Workflow DSL 接管；同期 PluginTool.kind 建成数日内删除。
+**我们观察到** Loop 自 07-02 开发，08-20 ADR 0025 宣布闭环（Doctor 巡检、defer、taskClass、verifyCommands 全落地），**8 天后（08-28，d35e7dd6）整体删除**，由 4 天前才诞生的 Workflow DSL 接管；同期 PluginTool.kind 建成数日内删除。
 
 **证据是** git 时间线（loop 提交 07-02→08-20；workflow 提交 08-27→08-31；loop-step.ts 删除于 08-28）+ ADR 0025 自述（角色层历史遗留、meta 写回脆弱、配置与执行错位）。
 
@@ -73,15 +73,13 @@
 
 **因此存在的机会是** 用自己的 Workflow DSL 跑**定时真实冒烟**（真实模型 + 真实 spawn → 断言账本写入/工具事件回流/artifact 产出），同时完成产品自验证与回归保护。预计影响：暗沟 bug 发现时点、冒烟通过率。
 
-| I4 | 真实 E2E 稀缺且高杠杆 | 冒烟通过率 | 较高可信 | ✅ `bun scripts/smoke-workflow.ts` + `SMOKE_CRON` 定时自冒烟（2026-08-31） |
-
 ## I5 删除决策快，但收尾清扫不进同一变更（已闭环）
 
 **我们观察到** Loop/CronJob 功能删除后，收尾清扫未进同一变更。
 
-**证据是** 功能删除于 2026-08-28（d35e7dd6）；schema 表定义与 DROP 迁移（0042/0043）随该提交一并落地。残留仅 `db.test.ts` 的 Phase-6 保留 fixture 对 `loop_item`/`loop_budget`/`cron_job` 三表 INSERT+断言。该 fixture 只 apply 到 0020（当时表仍存在），是自洽的历史迁移测试，保留 loop 行正是为了验证“0020 只删 audit、不碰其他表”，不应清理。
+**证据是** 功能删除于 2026-08-28（d35e7dd6）；schema 表定义与 DROP 迁移（0042/0043）随该提交一并落地。残留仅 `db.test.ts` 的 Phase-6 保留 fixture 对 `loop_item`/`loop_budget`/`cron_job` 三表 INSERT+断言。该 fixture 只 apply 到 0020（当时表仍存在），是自洽的历史迁移测试，保留 loop 行正是为了验证「0020 只删 audit、不碰其他表」，不应清理。
 
-**结论** 本洞察在核实后已闭环：schema 无死表，迁移链完整，fixture 有意保留。教训转给 I3：洞察文档自身的表述也要与代码对账（本条初稿曾误称“表仍在 schema”）。
+**结论** 本洞察在核实后已闭环：schema 无死表，迁移链完整，fixture 有意保留。教训转给 I3：洞察文档自身的表述也要与代码对账（本条初稿曾误称「表仍在 schema」）。
 
 **2026-09-03 增补（UI 暴露面变体，已闭环）** goal 引擎删除时暴露面一度残留为幽灵
 （`goal-state.ts`、`ConversationGoalStatusBar`、`/goal` 路由、WorkSummary），至 2026-09-01

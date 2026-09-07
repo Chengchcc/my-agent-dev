@@ -272,5 +272,5 @@ agent 跑完后一次性发卡片，不走流式，但可以利用卡片的 mark
 ## 推进路径
 
 1. ~~**M15.x**（当前）— 保持文本发送，验证 E2E 稳定性~~ ✅ 已完成
-2. **M15.1 卡片 + 流式** — `sendCard` + `runDeltaWatcher` + `updateCard` + `Typing` reaction lifecycle，降级纯文本 fallback
-3. **M15.2 交互卡片** — 按钮/表单回调，订阅 `card.action.trigger` 事件，实现审批/确认交互
+2. ~~**M15.1 卡片 + 流式** — `sendCard` + `runDeltaWatcher` + `updateCard` + `Typing` reaction lifecycle，降级纯文本 fallback~~（方向已废弃，未实施）
+3. ~~**M15.2 交互卡片** — 按钮/表单回调，订阅 `card.action.trigger` 事件，实现审批/确认交互~~（方向已废弃，未实施）
