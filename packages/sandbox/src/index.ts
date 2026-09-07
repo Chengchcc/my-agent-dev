@@ -83,23 +83,61 @@ export async function runInSandbox(input: SandboxInput): Promise<SandboxResult> 
   writeFileSync(join(dir, "script.ts"), input.code);
   writeFileSync(join(dir, "__sandbox_main.ts"), WRAPPER);
   let timedOut = false;
+  // Cap buffered output: a hostile `while(true) console.log(...)` would
+  // otherwise OOM the backend before the timeout fires.
+  const MAX_STREAM_BYTES = 10 * 1024 * 1024;
+  async function cappedText(stream: ReadableStream<Uint8Array>): Promise<string> {
+    const reader = stream.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total <= MAX_STREAM_BYTES) chunks.push(value);
+    }
+    const buf = Buffer.concat(chunks).toString("utf8");
+    return total > MAX_STREAM_BYTES
+      ? `${buf.slice(0, MAX_STREAM_BYTES)}\n[sandbox: output truncated at ${MAX_STREAM_BYTES} bytes]`
+      : buf;
+  }
   try {
-    const proc = Bun.spawn(["bun", "run", join(dir, "__sandbox_main.ts")], {
-      cwd: dir,
-      env: { ...BASE_ENV, ...(input.env ?? {}) },
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+    // Own process group: the timeout must reap grandchildren too, and a
+    // script that traps SIGTERM needs a SIGKILL escalation (a lone
+    // proc.kill() SIGTERM left executions stuck in "running" forever).
+    const hasSetsid = Bun.which("setsid") !== null;
+    const proc = Bun.spawn(
+      hasSetsid
+        ? ["setsid", "bun", "run", join(dir, "__sandbox_main.ts")]
+        : ["bun", "run", join(dir, "__sandbox_main.ts")],
+      {
+        cwd: dir,
+        env: { ...BASE_ENV, ...(input.env ?? {}) },
+        stdin: "pipe",
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
     proc.stdin!.write(JSON.stringify(input.input ?? {}));
     proc.stdin!.end();
+    const killTree = (signal: "SIGTERM" | "SIGKILL") => {
+      // Group kill first (setsid made the child a leader); fall back to the
+      // direct child when no group exists.
+      try {
+        process.kill(-proc.pid!, signal);
+      } catch {
+        proc.kill(signal);
+      }
+    };
     const timer = setTimeout(() => {
       timedOut = true;
-      proc.kill();
+      killTree("SIGTERM");
+      const escalation = setTimeout(() => killTree("SIGKILL"), 2_000);
+      escalation.unref?.();
     }, timeoutMs);
     const [stdout, stderr, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
+      cappedText(proc.stdout as ReadableStream<Uint8Array>),
+      cappedText(proc.stderr as ReadableStream<Uint8Array>),
       proc.exited,
     ]);
     clearTimeout(timer);
