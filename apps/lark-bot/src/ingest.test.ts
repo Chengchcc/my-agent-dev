@@ -53,6 +53,9 @@ function mockFetch(responses: MockResponse[]) {
   };
 }
 
+/** The H7 gate GETs the agent config first; empty allowlist = allow all. */
+const AGENT_CONFIG: MockResponse = { body: { lark: { allowedSenders: [] } } };
+
 afterAll(() => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (globalThis as any).fetch = originalFetch;
@@ -77,6 +80,7 @@ describe("ingest", () => {
     const db = makeDb();
 
     mockFetch([
+      AGENT_CONFIG,
       { body: { conversationId: "conv_new" } }, // create conversation
       // server-derived 1:1 routing returns the triggered run
       { body: { seq: 1, triggeredRuns: [{ agentId: "mem-agent", runId: "run-1" }] } },
@@ -103,7 +107,7 @@ describe("ingest", () => {
 
     // Pre-reserve to simulate already-consumed event
     reserveInbound(db, "evt_dup", "om_dup", "oc_dup");
-
+    mockFetch([AGENT_CONFIG]); // the H7 gate GET still runs before reserve
     const result = await ingest(
       { ...baseEvent, event_id: "evt_dup", message_id: "om_dup" },
       {
@@ -125,7 +129,7 @@ describe("ingest", () => {
   test("group message without @bot — posts but doesn't trigger", async () => {
     const db = makeDb();
 
-    mockFetch([{ body: { conversationId: "conv_grp" } }, { body: { seq: 2 } }]);
+    mockFetch([AGENT_CONFIG, { body: { conversationId: "conv_grp" } }, { body: { seq: 2 } }]);
 
     const result = await ingest(
       {
@@ -155,7 +159,7 @@ describe("ingest", () => {
   test("group message with @bot — triggers agent", async () => {
     const db = makeDb();
 
-    mockFetch([{ body: { conversationId: "conv_grp2" } }, { body: { seq: 3 } }]);
+    mockFetch([AGENT_CONFIG, { body: { conversationId: "conv_grp2" } }, { body: { seq: 3 } }]);
 
     const result = await ingest(
       {
@@ -186,6 +190,7 @@ describe("ingest", () => {
     const db = makeDb();
 
     mockFetch([
+      AGENT_CONFIG,
       { body: { conversationId: "conv_trig" } },
       { body: { seq: 4, triggeredRuns: [{ agentId: "agent_123", runId: "run_001" }] } },
     ]);
@@ -214,6 +219,7 @@ describe("ingest", () => {
     const db = makeDb();
 
     mockFetch([
+      AGENT_CONFIG,
       { body: { conversationId: "conv_empty" } },
       { body: { seq: 5, triggeredRuns: [] } },
     ]);
@@ -249,6 +255,7 @@ describe("ingest", () => {
     const triggered: Array<{ runId: string; conversationId: string; sourceMessageId: string }> = [];
 
     mockFetch([
+      AGENT_CONFIG,
       { body: { conversationId: "conv_cb" } },
       { body: { seq: 6, triggeredRuns: [{ agentId: "agent_123", runId: "run_cb1" }] } },
     ]);
@@ -273,6 +280,48 @@ describe("ingest", () => {
     expect(triggered[0]!.conversationId).toBe("conv_cb");
     expect(triggered[0]!.sourceMessageId).toBe("om_cb");
 
+    db.close();
+  });
+});
+
+describe("ingest H7 sender authorization", () => {
+  const ingestCtx = (db: ReturnType<typeof makeDb>) => ({
+    db,
+    selfAgentId: "agent_123",
+    selfAgentName: "TestBot",
+    botDisplayName: "TestBot",
+    backendUrl: "http://localhost",
+    profile: "test-profile",
+  });
+
+  test("bot sender_type is skipped before any fetch", async () => {
+    const db = makeDb();
+    mockFetch([]); // any fetch here would throw "exhausted"
+    const result = await ingest({ ...baseEvent, sender_type: "app" }, ingestCtx(db));
+    expect(result.action).toBe("skipped");
+    expect(result.triggered).toBe(false);
+    db.close();
+  });
+
+  test("sender not on the allowlist is skipped with no conversation created", async () => {
+    const db = makeDb();
+    mockFetch([{ body: { lark: { allowedSenders: ["ou_boss"] } } }]);
+    const result = await ingest(baseEvent, ingestCtx(db));
+    expect(result.action).toBe("skipped");
+    expect(result.triggered).toBe(false);
+    db.close();
+  });
+
+  test("allowlisted sender proceeds to create + post", async () => {
+    const db = makeDb();
+    mockFetch([
+      { body: { lark: { allowedSenders: ["ou_user001"] } } },
+      { body: { conversationId: "conv_h7" } },
+      { body: { seq: 9 } },
+    ]);
+    const result = await ingest(baseEvent, ingestCtx(db));
+    expect(result.action).toBe("consumed");
+    expect(result.conversationId).toBe("conv_h7");
     db.close();
   });
 });

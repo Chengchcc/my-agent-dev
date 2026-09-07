@@ -42,6 +42,29 @@ export async function ingest(event: LarkMessageEvent, ctx: IngestContext): Promi
   const { db, selfAgentId, botDisplayName, backendUrl, backendAuthToken, onNewBinding } = ctx;
   const client = createClient(backendUrl, backendAuthToken);
 
+  // ─── H7: sender authorization, BEFORE any binding/conversation state ───
+  // Bot senders never drive a run (bot-to-bot loop guard); humans must be
+  // on the agent's open_id allowlist when one is configured. Empty
+  // allowlist = single-operator default, everyone allowed.
+  if (event.sender_type !== undefined && event.sender_type !== "user") {
+    return { action: "skipped", triggered: false, triggeredRuns: [] };
+  }
+  const agentRes = await client.api.agents({ id: selfAgentId }).get();
+  const agentData: unknown = agentRes.data;
+  if (
+    agentRes.error ||
+    typeof agentData !== "object" ||
+    agentData === null ||
+    !("lark" in agentData)
+  ) {
+    console.error(`[ingest] agent config fetch failed: ${JSON.stringify(agentRes.error)}`);
+    return { action: "error", triggered: false, triggeredRuns: [] };
+  }
+  const larkCfg = agentData.lark as { allowedSenders?: string[] };
+  const allowed = larkCfg.allowedSenders ?? [];
+  if (allowed.length > 0 && !allowed.includes(event.sender_id)) {
+    return { action: "skipped", triggered: false, triggeredRuns: [] };
+  }
   // ─── Step 0: Idempotent reserve (local sqlite transaction) ───
   // Reserve before POST: if POST succeeds but confirm fails, the event won't re-POST.
   // Trade-off: "lose an inbound rather than duplicate a run trigger" (spec §5.3).

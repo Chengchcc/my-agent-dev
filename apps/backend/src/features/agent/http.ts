@@ -59,6 +59,7 @@ function toAgentResponse(row: AgentRow, status: string) {
       appId: lk.app_id !== "" ? lk.app_id : null,
       profileRef: lk.profile_ref !== "" ? lk.profile_ref : null,
       botDisplayName: lk.bot_display_name !== "" ? lk.bot_display_name : null,
+      allowedSenders: lk.allowed_senders,
       status,
     },
   };
@@ -150,6 +151,7 @@ export function agentRoutes(
               appId: t.Optional(t.String({ minLength: 1 })),
               appSecret: t.Optional(t.String({ minLength: 1 })),
               botDisplayName: t.Optional(t.String()),
+              allowedSenders: t.Optional(t.Array(t.String({ minLength: 1 }))),
             }),
           ),
         }),
@@ -251,6 +253,7 @@ export function agentRoutes(
               appId: t.Optional(t.String({ minLength: 1 })),
               appSecret: t.Optional(t.String({ minLength: 1 })),
               botDisplayName: t.Optional(t.String()),
+              allowedSenders: t.Optional(t.Array(t.String({ minLength: 1 }))),
             }),
           ),
         }),

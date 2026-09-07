@@ -36,6 +36,8 @@ export interface CreateAgentInput {
     appId?: string;
     appSecret?: string;
     botDisplayName?: string;
+    /** H7 sender allowlist (open_id). */
+    allowedSenders?: string[];
   };
 }
 
@@ -57,6 +59,8 @@ export interface UpdateAgentInput {
     appId?: string;
     appSecret?: string;
     botDisplayName?: string;
+    /** H7 sender allowlist (open_id). */
+    allowedSenders?: string[];
     /** profileRef is server-generated — never accepted from clients (§4.5). */
   };
 }

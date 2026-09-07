@@ -30,6 +30,10 @@ export const agentConfigSchema = z.object({
     enabled: z.boolean(),
     app_id: z.string(),
     bot_display_name: z.string(),
+    /** H7: open_id allowlist for who may drive this agent via Lark.
+     *  Empty = allow all senders (single-operator default); non-empty =
+     *  strict whitelist enforced by the lark-bot before any side effect. */
+    allowed_senders: z.array(z.string().min(1)).default([]),
     /** Server-generated (Lark profile init); backend writes it back. */
     profile_ref: z.string(),
   }),
@@ -55,6 +59,8 @@ export function buildAgentConfig(input: {
     enabled?: boolean;
     appId?: string;
     botDisplayName?: string;
+    /** H7 sender allowlist (open_id). */
+    allowedSenders?: string[];
   };
   prev?: AgentConfig;
 }): AgentConfig {
@@ -90,6 +96,7 @@ export function buildAgentConfig(input: {
       enabled: input.lark?.enabled ?? prev?.lark.enabled ?? false,
       app_id: input.lark?.appId ?? prev?.lark.app_id ?? "",
       bot_display_name: input.lark?.botDisplayName ?? prev?.lark.bot_display_name ?? "",
+      allowed_senders: input.lark?.allowedSenders ?? prev?.lark.allowed_senders ?? [],
       profile_ref: prev?.lark.profile_ref ?? (input.lark?.enabled ? `agent:${input.id}` : ""),
     },
   });
@@ -127,6 +134,8 @@ export function serializeAgentYaml(config: AgentConfig): string {
     `  app_id: ${q(lk.app_id)}`,
     `  bot_display_name: ${q(lk.bot_display_name)}`,
     `  profile_ref: ${q(lk.profile_ref)}`,
+    "  allowed_senders:",
+    ...lk.allowed_senders.map((s) => `    - ${q(s)}`),
     "",
   ].join("\n");
 }

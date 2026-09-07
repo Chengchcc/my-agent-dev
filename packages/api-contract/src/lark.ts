@@ -25,6 +25,10 @@ export const larkMessageEventSchema = z.object({
   chat_type: z.enum(["p2p", "group"]),
   message_type: z.string(),
   sender_id: z.string().min(1),
+  /** "user" | "app" | ... — absent in older lark-cli event dumps. When
+   *  present, non-"user" senders (bots) must never drive an agent run
+   *  (H7: bot-to-bot loops). */
+  sender_type: z.string().optional(),
   content: z.string(),
   senderDisplayName: z.string().nullable().optional(),
 });

@@ -77,6 +77,7 @@ export function createAgentService(opts: {
               enabled: input.lark.enabled,
               appId: input.lark.appId,
               botDisplayName: input.lark.botDisplayName,
+              allowedSenders: input.lark.allowedSenders,
             }
           : undefined,
       });
@@ -126,6 +127,7 @@ export function createAgentService(opts: {
               enabled: input.lark.enabled,
               appId: input.lark.appId,
               botDisplayName: input.lark.botDisplayName,
+              allowedSenders: input.lark.allowedSenders,
             }
           : undefined,
         prev: existing.config,

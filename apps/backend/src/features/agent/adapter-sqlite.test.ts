@@ -92,3 +92,19 @@ describe("agent config projects field (ADR 0023)", () => {
     expect(next.runtime_config.projects).toEqual(["p1"]);
   });
 });
+
+describe("agent config allowed_senders (H7)", () => {
+  test("round-trips through the serialized agent.yml form and prev fallback", () => {
+    const config = cfg("a-h7", "H7", {
+      lark: { enabled: true, allowedSenders: ["ou_1", "ou_2"] },
+    });
+    expect(config.lark.allowed_senders).toEqual(["ou_1", "ou_2"]);
+    expect(serializeAgentYaml(config)).toContain('- "ou_1"');
+    const next = buildAgentConfig({ id: "a-h7", name: "H7", prev: config });
+    expect(next.lark.allowed_senders).toEqual(["ou_1", "ou_2"]);
+  });
+
+  test("defaults to an empty allowlist (single-operator allow-all)", () => {
+    expect(cfg("a-h7b", "H7b").lark.allowed_senders).toEqual([]);
+  });
+});
