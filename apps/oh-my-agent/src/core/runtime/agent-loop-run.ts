@@ -229,8 +229,14 @@ export async function executeTools(
             blocked = true;
             if (verdict.reason) blockReason = verdict.reason;
           }
-        } catch {
-          /* permission gate errors never crash the run */
+        } catch (err) {
+          // M8: fail CLOSED. The gate is the ask/deny/auto authority — a
+          // thrown verdict (classifier OOM, non-Error, refactor drift)
+          // must block the tool, never silently allow it.
+          blocked = true;
+          blockReason =
+            "permission gate error — fail closed: " +
+            (err instanceof Error ? err.message : String(err));
         }
       }
       if (blocked) {
