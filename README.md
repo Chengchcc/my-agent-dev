@@ -107,6 +107,17 @@ providers:
 > **Oma 启动方式**：开发环境 `bun run dev` 开箱即用，Backend 自动用 Bun 运行 `apps/oh-my-agent/src/cli.ts`，无需全局安装或 `bun link`。生产环境通过 `OMA_BIN` 指向构建后的 `apps/oh-my-agent/dist/cli.js` 绝对路径（详见 `apps/backend/.env.example`）。
 > **npm 包**：`@chengchenccc/oh-my-agent` —— [https://www.npmjs.com/package/@chengchenccc/oh-my-agent](https://www.npmjs.com/package/@chengchenccc/oh-my-agent)
 
+## 🔐 安全模型（单操作员）
+
+本项目按**单操作员、系统本地部署**的威胁模型设计：web 登录、BFF 与 backend 共享 token 的所有会话是**同一个操作员**，没有多租户隔离。请勿把它当作多用户服务暴露到公网——不同登录用户可互相读写会话、Run、Agent 配置并代答 HITL 审批。
+
+由此推论的产品边界：
+
+- MCP 服务器 CRUD 与工具调用、Provider key 配置等"管理员面"是操作员能力，不加第二用户体系；
+- workflow script 节点默认禁用（`WORKFLOW_SCRIPTS_ENABLED=1` 显式开启），开启后脚本在 bwrap/sandbox-exec 下运行（无网络、不可读 dataDir/.env、独立 PID namespace）；
+- Lark 入站消息受 `agent.lark.allowed_senders` open_id 白名单约束，bot 发送者一律丢弃；
+- 全部 secret（provider key、MCP headers）只存于服务端，HTTP 读取侧一律脱敏。
+
 ## 📦 仓库结构
 
 ```
