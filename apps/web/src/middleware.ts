@@ -1,10 +1,11 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { readSession } from "@/lib/session";
 
 // Paths accessible without session
 const PUBLIC_PREFIXES = ["/login", "/api/auth"];
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Allow public paths
@@ -17,10 +18,13 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Check for session cookie (BFF will verify HMAC server-side;
-  // middleware only checks existence for UX redirect)
-  const session = req.cookies.get("maw_session");
-  if (!session?.value) {
+  // REAL session verification (HMAC + exp), not just cookie existence:
+  // SSR pages fetch data with the server-side backend token and never pass
+  // through the BFF's session check, so a forged maw_session cookie used to
+  // read every workflow/conversation page (proven bypass, 2026-09-07).
+  // readSession is edge-safe (WebCrypto + zod-only config import).
+  const session = await readSession(req.headers.get("cookie"));
+  if (!session) {
     const next = encodeURIComponent(`${req.nextUrl.pathname}${req.nextUrl.search}`);
     return NextResponse.redirect(new URL(`/login?next=${next}`, req.url));
   }

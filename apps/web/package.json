@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev --port 3001 -H 127.0.0.1",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -H 127.0.0.1",
     "lint": "biome check . && eslint .",
     "format": "biome check --write .",
     "test": "bun test",
