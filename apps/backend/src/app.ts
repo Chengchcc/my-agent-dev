@@ -34,19 +34,6 @@ export interface FeatureSet {
   productTools: ProductToolsService;
 }
 
-// ── Auth plugin ──
-
-function authPlugin(token: string) {
-  return new Elysia({ name: "auth" }).onBeforeHandle(({ path, headers, set }) => {
-    if (path === "/health") return undefined;
-    if (!checkAuthToken(headers["x-auth-token"] ?? "", token)) {
-      set.status = 401;
-      return { error: "Unauthorized" };
-    }
-    return undefined;
-  });
-}
-
 // ── Feature route plugins ──
 
 // ── App factory ──
@@ -71,7 +58,18 @@ export function createApp(token: string, features: FeatureSet) {
   } = features;
   const app = new Elysia()
     .get("/health", () => ({ status: "ok" }))
-    .use(authPlugin(token))
+    // Auth hook MUST live on the MAIN app instance: a separate
+    // `new Elysia({name}).onBeforeHandle()` mounted via `.use()` is
+    // plugin-scoped — Elysia never applied it to these routes, which left
+    // the whole API unauthenticated (runtime-proven 2026-09-07).
+    .onBeforeHandle(function authGuard({ path, headers, set }) {
+      if (path === "/health") return undefined;
+      if (!checkAuthToken(headers["x-auth-token"] ?? "", token)) {
+        set.status = 401;
+        return { error: "Unauthorized" };
+      }
+      return undefined;
+    })
     .use(agents)
     .use(conversations)
     .use(ops);
