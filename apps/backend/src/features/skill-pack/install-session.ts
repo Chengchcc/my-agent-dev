@@ -18,6 +18,9 @@ export interface InstallSource {
   sourceKind: SkillPackSource;
   sourceUrl: string | null;
   versionRef: string | null;
+  /** Rev the user confirmed for sync. When set, runSync resets only if the
+   *  fetched FETCH_HEAD still matches — closing the confirm TOCTOU. */
+  expectedRev?: string | null;
 }
 /** Sync was blocked because the upstream ref moved past the recorded HEAD. */
 export class UpstreamChangedError extends Error {
@@ -50,11 +53,25 @@ function git(
   });
 }
 
-/** Fetch origin (optionally ref) and return the remote FETCH_HEAD rev.
- *  Read-only: does NOT reset the working tree. */
+/** A git ref that may safely appear in `git fetch ... <ref>` argv: parse-options
+ *  accepts options after positionals, so a "-..." value would inject fetch
+ *  options (e.g. --upload-pack). Bare refspec characters only. */
+function assertSafeRef(ref: string): string {
+  if (!/^[A-Za-z0-9._/-]+$/.test(ref)) {
+    throw new Error(`unsafe git ref: ${ref}`);
+  }
+  return ref;
+}
+
+/** Fetch the DB-stored source URL (optionally ref) and return the remote
+ *  FETCH_HEAD rev. Read-only: does NOT reset the working tree. The stored URL
+ *  is used directly — fetching the "origin" alias would trust .git/config,
+ *  which lives inside the pack dir and can be rewritten by any process (or
+ *  pack content) to an attacker transport. */
 async function fetchRemoteRev(source: InstallSource, packDir: string): Promise<string> {
-  const fetchArgs = ["fetch", "origin"];
-  if (source.versionRef) fetchArgs.push(source.versionRef);
+  if (!source.sourceUrl) throw new Error("git sync requires a stored sourceUrl");
+  const fetchArgs = ["fetch", source.sourceUrl];
+  if (source.versionRef) fetchArgs.push(assertSafeRef(source.versionRef));
   const fetchResult = await git(fetchArgs, packDir);
   if (fetchResult.exitCode !== 0) throw new Error(`git fetch failed: ${fetchResult.stderr}`);
   const revResult = await git(["rev-parse", "FETCH_HEAD"], packDir);
@@ -153,8 +170,12 @@ export async function runSync(source: InstallSource, deps: InstallSessionDeps): 
       await deps.port.applyInstallTransition(source.packId, "syncing", { now: Date.now() });
     }
     const installedRef = await fetchRemoteRev(source, packDir);
+    if (source.expectedRev && installedRef !== source.expectedRev) {
+      throw new Error(
+        `upstream moved during confirm: expected ${source.expectedRev}, got ${installedRef}`,
+      );
+    }
     const resetResult = await git(["reset", "--hard", "FETCH_HEAD"], packDir);
-    if (resetResult.exitCode !== 0) throw new Error(`git reset failed: ${resetResult.stderr}`);
     if (!(await validatePackDir(cwd, source.packId))) {
       throw new Error("synced pack has no valid SKILL.md");
     }

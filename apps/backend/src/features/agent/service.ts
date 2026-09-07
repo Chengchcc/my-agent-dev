@@ -135,7 +135,20 @@ export function createAgentService(opts: {
       // row points at it; the file write stays at the (new) source.
       let workspacePath = existing.workspacePath;
       if (input.workspacePath !== undefined && input.workspacePath !== existing.workspacePath) {
-        workspacePath = await ensureAgentWorkspace(resolve(input.workspacePath));
+        // Same allowed-roots gate the create path enforces — an update must
+        // not relocate an agent's workspace (and its viewer endpoints)
+        // to an arbitrary directory.
+        const abs = resolve(input.workspacePath);
+        const allowed =
+          opts.allowedWorkspaceRoots?.some(
+            (root) => abs === root || abs.startsWith(`${root}${sep}`),
+          ) ?? false;
+        if (!allowed) {
+          throw new ValidationError(
+            `workspace override ${abs} is outside the allowed roots: ${opts.allowedWorkspaceRoots?.join(", ") ?? "none"}`,
+          );
+        }
+        workspacePath = await ensureAgentWorkspace(abs);
       }
       await writeFile(join(workspacePath, "agent.yml"), serializeAgentYaml(config), "utf-8");
 

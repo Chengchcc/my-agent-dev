@@ -1,5 +1,5 @@
 import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 import {
   type ArtifactMeta,
   type ArtifactRef,
@@ -39,9 +39,12 @@ export function createArtifactFsAdapter(root: string): ArtifactPort {
   mkdirSync(rootResolved, { recursive: true });
 
   function safePath(folder: string, filename: string): string {
-    const rel = join(folder, filename);
-    const p = resolve(rootResolved, rel);
-    if (!p.startsWith(rootResolved)) throw new Error("artifact path escapes root");
+    const p = resolve(rootResolved, join(folder, filename));
+    // Separator matters: without it, "../artifacts-evil" resolves to a
+    // sibling whose name shares the prefix and passes a bare startsWith.
+    if (p !== rootResolved && !p.startsWith(rootResolved + sep)) {
+      throw new Error("artifact path escapes root");
+    }
     return p;
   }
 

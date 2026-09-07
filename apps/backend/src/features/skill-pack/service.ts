@@ -34,6 +34,7 @@ export interface InstallSessionCtx {
   sourceKind: SkillPackSource;
   sourceUrl: string | null;
   versionRef: string | null;
+  expectedRev?: string | null;
 }
 
 export function createSkillPackService(deps: SkillPackServiceDeps) {
@@ -121,10 +122,15 @@ export function createSkillPackService(deps: SkillPackServiceDeps) {
         const upstream = await deps.checkSync(packId, ctx);
         if (upstream) throw new UpstreamChangedError(upstream.from, upstream.to);
       }
+      if (confirm) {
+        // Close the confirm TOCTOU: re-check upstream NOW and pin the sync to
+        // exactly this rev — runSync refuses to reset if FETCH_HEAD moved.
+        const upstream = deps.checkSync ? await deps.checkSync(packId, ctx) : null;
+        ctx.expectedRev = upstream ? upstream.to : row.installedRef;
+      }
 
       const updated = await port.applyInstallTransition(packId, "syncing", { now: Date.now() });
       if (!updated) throw new Error(`Failed to transition pack ${packId} to syncing`);
-
       triggerSync(packId, ctx);
 
       return updated;

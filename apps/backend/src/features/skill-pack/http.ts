@@ -131,6 +131,9 @@ export function skillPackRoutes(svc: SkillPackService, dataDir: string) {
     })
 
     .get("/api/skill-packs/:id/skills", async ({ params: { id } }) => {
+      // Elysia decodes %2F inside path params — without this gate "../" in
+      // :id walks and reads arbitrary directories.
+      assertSafeEntry(id);
       const skills = buildSkillIndex([join(posixSkillRoot(dataDir), id)]);
       return skills.map((s) => ({
         name: s.name,
@@ -143,9 +146,10 @@ export function skillPackRoutes(svc: SkillPackService, dataDir: string) {
       "/api/skill-packs/:id/files",
       async ({ params: { id }, query: { path: subpath }, set }) => {
         try {
+          assertSafeEntry(id);
           const ws = nodeFsAdapter(posixSkillRoot(dataDir));
-          const basePath = subpath ? `${id}/${subpath}` : id;
 
+          const basePath = subpath ? `${id}/${subpath}` : id;
           // Validate against traversal
           const segments = subpath ? subpath.split("/") : [];
           for (const seg of segments) assertSafeEntry(seg);
@@ -181,9 +185,11 @@ export function skillPackRoutes(svc: SkillPackService, dataDir: string) {
 
           set.status = 400;
           return { error: "Not a file or directory" };
-        } catch (err) {
+        } catch {
+          // Generic message: raw fs errors embed absolute paths, which
+          // turns the endpoint into a filesystem probe.
           set.status = 400;
-          return { error: (err as Error).message };
+          return { error: "cannot read pack files" };
         }
       },
       {
@@ -195,6 +201,7 @@ export function skillPackRoutes(svc: SkillPackService, dataDir: string) {
     .get(
       "/api/skill-packs/:id/search",
       ({ params: { id }, query: { q }, set }) => {
+        assertSafeEntry(id);
         const root = resolve(posixSkillRoot(dataDir), id);
         if (!existsSync(root)) {
           set.status = 404;

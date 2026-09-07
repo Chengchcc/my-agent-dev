@@ -77,6 +77,12 @@ export async function installKnowledgePack(
 
   try {
     if (input.sourceKind === "builtin") {
+      // name selects a subdirectory of builtinRoot — a bare segment. Without
+      // this check "../" copies arbitrary directories into the pack, where
+      // the files API then reads them back out.
+      if (!/^[a-zA-Z0-9_-]+$/.test(input.name)) {
+        throw new Error(`invalid builtin pack name: ${input.name}`);
+      }
       const src = deps.builtinRoot ? join(deps.builtinRoot, input.name) : null;
       if (!src || !existsSync(src)) throw new Error(`builtin pack not found: ${input.name}`);
       const res = await run("cp", ["-a", `${src}/.`, target], "/");

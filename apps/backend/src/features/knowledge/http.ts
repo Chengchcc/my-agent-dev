@@ -25,7 +25,9 @@ export function knowledgeRoutes(svc: KnowledgeService) {
             return { error: e.message };
           }
           set.status = 400;
-          return { error: (e as Error).message };
+          // Generic message: raw fs errors embed absolute paths, which
+          // turns the endpoint into a filesystem probe.
+          return { error: "cannot read pack files" };
         }
       },
       {
