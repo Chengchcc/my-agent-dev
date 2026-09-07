@@ -23,7 +23,12 @@ import {
   agentRoutes,
   createAgentConfigMcpServer,
 } from "../features/agent/index.js";
-import { reconcileAgentResources } from "../features/agent/workspace-bridge.js";
+import {
+  type McpServerEntry,
+  reconcileAgentResources,
+  writeMcpConfig,
+  writeProductToolsManifest,
+} from "../features/agent/workspace-bridge.js";
 import {
   createAgentContextService,
   sqliteAgentContextAdapter,
@@ -556,6 +561,12 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     productToolsEntrypoint: config.productToolsMcpUrl
       ? `sse:${sseUrlEndpoint(config.productToolsMcpUrl)}`
       : "stdio:/nonexistent",
+    // H1: the bridge is the only author of the workspace .mcp.json —
+    // re-written from source of truth immediately before every spawn.
+    rewriteWorkspaceBridge: async (agentId, root) => {
+      writeMcpConfig(root, await bridgeMcpServers(agentId));
+      writeProductToolsManifest(root, productToolsManifest());
+    },
     onRunCommitted,
     conversationTitleOf: (conversationId: string) =>
       conv.convPort.getConversation(conversationId)?.title ?? null,
@@ -695,6 +706,100 @@ export async function installFeatures(services: BackendServices): Promise<Instal
     return ids;
   }
 
+  /** H1: the ONE builder of the workspace mcp server list — used by
+   *  reconcileAgent (config changes) AND the per-dispatch rewrite
+   *  (rewriteWorkspaceBridge). Keeping a single author means an
+   *  agent-tampered .mcp.json is always overwritten from this source of
+   *  truth before the next spawn mounts it. */
+  async function bridgeMcpServers(agentId: string): Promise<McpServerEntry[]> {
+    const agent = await agentSvc.getById(agentId);
+    const assignedKnowledge = agent.config.runtime_config.knowledge_packs
+      .map((packId) => knowledgeSvc.getById(packId))
+      .filter((p): p is NonNullable<typeof p> => p !== null && p.status === "ready");
+    return [
+      ...(await mcpSvc.listForAgent(agentId)).map((s) => ({
+        name: s.name,
+        transport: s.transport,
+        url: s.url,
+        command: s.command,
+        args: s.args ?? [],
+        env: s.env ?? {},
+        headers: s.headers ?? {},
+      })),
+      // The product-tools server (ledger access, ADR 0020) merges into
+      // the SAME workspace .mcp.json — one config, one writer. Gated by
+      // the per-server enabled set (ENABLED_MCP_SERVERS).
+      ...(config.productToolsMcpUrl && enabledMcpServers.has("product-tools")
+        ? [
+            {
+              name: "product-tools",
+              transport: "sse" as const,
+              // The SSE session endpoint is `<base>/sse` (the child's
+              // SSEClientTransport GETs the url as-is; the bare base
+              // 404s). sseUrlEndpoint appends only when needed.
+              url: sseUrlEndpoint(config.productToolsMcpUrl),
+              // ENV NAME, not the token: pi (bearerTokenEnv) and omp
+              // (bearer_token_env_var) read this var at connect time;
+              // claude expands the ${VAR} placeholder in headers. The
+              // per-run bearer arrives via spawn env. File stays static.
+              bearerTokenEnv: "PRODUCT_TOOLS_RUN_TOKEN",
+            },
+          ]
+        : []),
+      // The workflow DSL server (per-server controlled): lets the chat
+      // agent read/write the workflow file it is editing. Injected only
+      // when enabled AND the server is live.
+      ...(workflowMcp
+        ? [
+            {
+              name: "workflow",
+              transport: "sse" as const,
+              // The Oma SSEClientTransport GETs this url as-is; the bare
+              // base 404s, so point at the /sse endpoint directly.
+              url: workflowMcp.url,
+            },
+          ]
+        : []),
+      // The agent-config server: lets the chat agent read/write an
+      // agent's config, so the edit page's chat can propose changes.
+      ...(agentConfigMcp
+        ? [
+            {
+              name: "agent-config",
+              transport: "sse" as const,
+              url: agentConfigMcp.url,
+            },
+          ]
+        : []),
+      // The knowledge recall server (ADR 0022): merged only when the
+      // agent has ready packs (stdio, scoped to its knowledge dir).
+      ...(assignedKnowledge.length > 0
+        ? [
+            {
+              name: "knowledge",
+              transport: "stdio" as const,
+              command: process.execPath,
+              args: [
+                resolveKnowledgeMcpServerEntry(config),
+                join(agent.workspacePath, "knowledge"),
+                ...assignedKnowledge.flatMap((p) =>
+                  p.installedRef ? ["--allowed-pack", p.installedRef] : [],
+                ),
+              ],
+            },
+          ]
+        : []),
+    ];
+  }
+
+  /** The product-tools manifest (ADR 0003 decision 6) — single source for
+   *  reconcile + the per-dispatch manifest rewrite. */
+  function productToolsManifest(): readonly unknown[] {
+    return config.productToolsMcpUrl
+      ? [...buildHistoryTools(`sse:${sseUrlEndpoint(config.productToolsMcpUrl)}`)]
+      : [];
+  }
+
   reconcileAgent.fn = async (agentId: string, prevProjects?: string[]): Promise<void> => {
     try {
       const agent = await agentSvc.getById(agentId);
@@ -769,83 +874,8 @@ export async function installFeatures(services: BackendServices): Promise<Instal
         skillPacks: packs
           .filter((p) => p.status === "ready")
           .map((p) => ({ id: p.id, source: installPath(config.dataDir, p.id) })),
-        mcpServers: [
-          ...(await mcpSvc.listForAgent(agentId)).map((s) => ({
-            name: s.name,
-            transport: s.transport,
-            url: s.url,
-            command: s.command,
-            args: s.args ?? [],
-            env: s.env ?? {},
-            headers: s.headers ?? {},
-          })),
-          // The product-tools server (ledger access, ADR 0020) merges into
-          // the SAME workspace .mcp.json — one config, one writer. Gated by
-          // the per-server enabled set (ENABLED_MCP_SERVERS).
-          ...(config.productToolsMcpUrl && enabledMcpServers.has("product-tools")
-            ? [
-                {
-                  name: "product-tools",
-                  transport: "sse" as const,
-                  // The SSE session endpoint is `<base>/sse` (the child's
-                  // SSEClientTransport GETs the url as-is; the bare base
-                  // 404s). sseUrlEndpoint appends only when needed.
-                  url: sseUrlEndpoint(config.productToolsMcpUrl),
-                  // ENV NAME, not the token: pi (bearerTokenEnv) and omp
-                  // (bearer_token_env_var) read this var at connect time;
-                  // claude expands the ${VAR} placeholder in headers. The
-                  // per-run bearer arrives via spawn env. File stays static.
-                  bearerTokenEnv: "PRODUCT_TOOLS_RUN_TOKEN",
-                },
-              ]
-            : []),
-          // The workflow DSL server (per-server controlled): lets the chat
-          // agent read/write the workflow file it is editing. Injected only
-          // when enabled AND the server is live.
-          ...(workflowMcp
-            ? [
-                {
-                  name: "workflow",
-                  transport: "sse" as const,
-                  // The Oma SSEClientTransport GETs this url as-is; the bare
-                  // base 404s, so point at the /sse endpoint directly.
-                  url: workflowMcp.url,
-                },
-              ]
-            : []),
-          // The agent-config server: lets the chat agent read/write an
-          // agent's config, so the edit page's chat can propose changes.
-          ...(agentConfigMcp
-            ? [
-                {
-                  name: "agent-config",
-                  transport: "sse" as const,
-                  url: agentConfigMcp.url,
-                },
-              ]
-            : []),
-          // The knowledge recall server (ADR 0022): merged only when the
-          // agent has ready packs (stdio, scoped to its knowledge dir).
-          ...(assignedKnowledge.length > 0
-            ? [
-                {
-                  name: "knowledge",
-                  transport: "stdio" as const,
-                  command: process.execPath,
-                  args: [
-                    resolveKnowledgeMcpServerEntry(config),
-                    join(agent.workspacePath, "knowledge"),
-                    ...assignedKnowledge.flatMap((p) =>
-                      p.installedRef ? ["--allowed-pack", p.installedRef] : [],
-                    ),
-                  ],
-                },
-              ]
-            : []),
-        ],
-        productTools: config.productToolsMcpUrl
-          ? [...buildHistoryTools(`sse:${sseUrlEndpoint(config.productToolsMcpUrl)}`)]
-          : [],
+        mcpServers: await bridgeMcpServers(agentId),
+        productTools: productToolsManifest(),
         knowledgePacks: assignedKnowledge.map((p) => ({
           id: p.id,
           source: p.installedRef ?? "",

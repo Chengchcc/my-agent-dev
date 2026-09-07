@@ -39,6 +39,11 @@ export interface AgentRunExecutionDeps {
   /** Shared per-worktree lock (A4): run dispatch, loop clean-start/reset
    *  and agent detach serialize on the same roots. */
   readonly workspaceLocks: WorkspaceLockRegistry;
+  /** H1: overwrite the run's workspace `.mcp.json` (+ product-tools
+   *  manifest) from the DB source of truth immediately before spawn, so a
+   *  run can never mount an agent-tampered config (forged product-tools
+   *  server / run-token exfiltration). Absent (tests) = skip. */
+  readonly rewriteWorkspaceBridge?: (agentId: string, root: string) => Promise<void>;
   /** Called after a completed run's Product commit (History Message +
    *  Context ref) lands atomically. Fired on the original commit AND on
    *  retryTerminalCommit replay - consumers must be idempotent per

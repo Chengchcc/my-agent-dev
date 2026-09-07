@@ -159,6 +159,13 @@ export function createExecutionDispatcher(ctx: ExecutionDispatchCtx): {
     const cliSessionRef = rawRef?.startsWith(kindPrefix)
       ? rawRef.slice(kindPrefix.length)
       : undefined;
+    // H1: the bridge is the ONLY author of workspace config files. Rewrite
+    // from the DB source of truth right before spawn so an agent-tampered
+    // .mcp.json (forged product-tools server, run-token exfil) never
+    // mounts. Fail-closed: a failed rewrite aborts the dispatch.
+    if (deps.rewriteWorkspaceBridge) {
+      await deps.rewriteWorkspaceBridge(run.agentId, workspace.root);
+    }
     const segment = await backend.execute(
       buildRunInput(
         deps,
