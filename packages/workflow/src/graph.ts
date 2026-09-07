@@ -129,7 +129,12 @@ export function mergeInputs(
   for (const c of [...completions].sort((a, b) => a.order - b.order)) {
     if (!c.output) continue;
     for (const [k, v] of Object.entries(c.output)) {
-      if (k === "nextNode") continue; // control field, not data
+      // nextNode is a control field, not data; __proto__/constructor would
+      // prototype-pollute the merged input plane (agent/script output is
+      // model-controlled JSON).
+      if (k === "nextNode" || k === "__proto__" || k === "constructor" || k === "prototype") {
+        continue;
+      }
       input[k] = v;
       provenance[k] = c.nodeId;
     }
