@@ -13,7 +13,7 @@ import {
 } from "@chengchenccc/workflow";
 import { HttpError } from "../../infra/errors.js";
 import type { WorkflowExecutionRow, WorkflowNodeRunRow } from "./domain.js";
-import type { ExecutionEventBus, WorkflowEvent } from "./event-bus.js";
+import type { EventBusSubscription, ExecutionEventBus, WorkflowEvent } from "./event-bus.js";
 import type { WorkflowExecutionPort } from "./ports.js";
 
 export interface AgentRunnerDeps {
@@ -115,7 +115,10 @@ export interface WorkflowExecutionService {
     form?: Record<string, unknown>;
     status: string;
   } | null>;
-  subscribeEvents(executionId: string, signal?: AbortSignal): Promise<AsyncIterable<WorkflowEvent>>;
+  subscribeEvents(
+    executionId: string,
+    signal?: AbortSignal,
+  ): Promise<EventBusSubscription<WorkflowEvent>>;
   recover(): Promise<void>;
   dispose(): Promise<void>;
 }
@@ -779,7 +782,7 @@ export function createWorkflowExecutionService(
     async subscribeEvents(
       executionId: string,
       _signal?: AbortSignal,
-    ): Promise<AsyncIterable<WorkflowEvent>> {
+    ): Promise<EventBusSubscription<WorkflowEvent>> {
       return deps.eventBus.subscribe(executionId);
     },
     async recover() {

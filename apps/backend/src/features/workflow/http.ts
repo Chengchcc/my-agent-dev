@@ -125,7 +125,31 @@ export function workflowRoutes(deps: {
       const defEvents: WorkflowDefinitionEventBus = bus;
       async function* stream(): AsyncIterable<WorkflowDefinitionEvent | { _heartbeat: boolean }> {
         const sub = defEvents.subscribe(workflowId);
-        for await (const ev of sub) yield ev;
+        const it = sub.stream[Symbol.asyncIterator]();
+        try {
+          // M6: heartbeat every 15s so proxies/browsers never idle-timeout
+          // the connection (reconnects previously amplified the dead-queue
+          // leak); unsubscribe on ANY exit path so the bus Set drains.
+          let pending: Promise<IteratorResult<WorkflowDefinitionEvent>> | null = null;
+          for (;;) {
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            const tick = new Promise<null>((resolve) => {
+              timer = setTimeout(() => resolve(null), 15_000);
+            });
+            timer?.unref?.();
+            if (!pending) pending = it.next();
+            const winner = await Promise.race([pending, tick]);
+            if (winner === null) {
+              yield { _heartbeat: true };
+              continue;
+            }
+            pending = null;
+            if (winner.done) return;
+            yield winner.value;
+          }
+        } finally {
+          sub.unsubscribe();
+        }
       }
       return sseResponse(
         stream(),
@@ -254,14 +278,19 @@ export function workflowRoutes(deps: {
           // the queue), then replay persisted history, then stream live.
           // This closes the replay gap; consumers tolerate rare duplicates.
           const bus = await svc.subscribeEvents(executionId);
-          const alreadyTerminal = ["success", "failure", "custom"].includes(row!.status);
-          const history = await svc.listExecutionEvents(executionId);
-          for (const ev of history) {
-            yield { event: ev.event, executionId, ts: ev.ts, data: ev.data, seq: ev.seq };
-          }
-          if (alreadyTerminal) return;
-          for await (const ev of bus) {
-            yield ev;
+          try {
+            const alreadyTerminal = ["success", "failure", "custom"].includes(row!.status);
+            const history = await svc.listExecutionEvents(executionId);
+            for (const ev of history) {
+              yield { event: ev.event, executionId, ts: ev.ts, data: ev.data, seq: ev.seq };
+            }
+            if (alreadyTerminal) return;
+            for await (const ev of bus.stream) {
+              yield ev;
+            }
+          } finally {
+            // M6: client disconnect / terminal must drain the bus queue.
+            bus.unsubscribe();
           }
         }
         return sseResponse(

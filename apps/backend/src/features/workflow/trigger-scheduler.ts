@@ -73,7 +73,19 @@ export function createWorkflowTriggerScheduler(
     async sync() {
       for (const hs of handles.values()) for (const h of hs) h.stop();
       handles.clear();
+      // M5: handles are keyed by definition id — a second file with the
+      // same id would overwrite the first handle list and orphan its
+      // Bun.cron timers forever (one more leaked set on every sync).
+      const seen = new Set<string>();
       for (const def of loadDefinitions()) {
+        if (seen.has(def.id)) {
+          console.error(
+            `[trigger-scheduler] duplicate workflow id "${def.id}" — later definition skipped; ` +
+              `rename one of the files or fix definition.id`,
+          );
+          continue;
+        }
+        seen.add(def.id);
         const list: { stop(): void }[] = [];
         for (const t of def.triggers ?? []) {
           if (t.type === "cron" && t.enabled !== false) {

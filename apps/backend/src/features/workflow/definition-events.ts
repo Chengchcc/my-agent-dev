@@ -14,8 +14,10 @@ export interface WorkflowDefinitionEvent {
 class Queue {
   private items: WorkflowDefinitionEvent[] = [];
   private wake: (() => void) | null = null;
+  private closed = false;
 
   push(ev: WorkflowDefinitionEvent): void {
+    if (this.closed) return;
     this.items.push(ev);
     if (this.wake) {
       const w = this.wake;
@@ -24,11 +26,20 @@ class Queue {
     }
   }
 
+  /** Release a detached consumer (M6). */
+  close(): void {
+    this.closed = true;
+    const w = this.wake;
+    this.wake = null;
+    w?.();
+  }
+
   async *consume(): AsyncIterable<WorkflowDefinitionEvent> {
     for (;;) {
       while (this.items.length > 0) {
         yield this.items.shift()!;
       }
+      if (this.closed) return;
       await new Promise<void>((resolve) => {
         this.wake = resolve;
       });
@@ -44,12 +55,24 @@ export class WorkflowDefinitionEventBus {
     for (const q of this.queues.get(workflowId) ?? []) q.push(ev);
   }
 
-  subscribe(workflowId: string): AsyncIterable<WorkflowDefinitionEvent> {
+  subscribe(workflowId: string): {
+    stream: AsyncIterable<WorkflowDefinitionEvent>;
+    unsubscribe(): void;
+  } {
     const q = new Queue();
     const set = this.queues.get(workflowId) ?? new Set<Queue>();
     set.add(q);
     this.queues.set(workflowId, set);
-    return q.consume();
+    return {
+      stream: q.consume(),
+      unsubscribe: () => {
+        const set = this.queues.get(workflowId);
+        if (!set) return;
+        set.delete(q);
+        if (set.size === 0) this.queues.delete(workflowId);
+        q.close();
+      },
+    };
   }
 
   dispose(): void {

@@ -7,6 +7,14 @@ import type { WorkflowDefinition } from "@chengchenccc/workflow";
 import { workflowRoutes } from "./http.js";
 import type { WorkflowExecutionService } from "./service.js";
 
+/** Test double for the M6 subscription shape. */
+function makeSub<T>(stream: AsyncIterable<T>): {
+  stream: AsyncIterable<T>;
+  unsubscribe: () => void;
+} {
+  return { stream, unsubscribe: () => {} };
+}
+
 const def: WorkflowDefinition = {
   version: 1,
   id: "wf",
@@ -75,7 +83,7 @@ const fakeService: WorkflowExecutionService = {
       createdAt: 1,
     },
   ],
-  subscribeEvents: async () => (async function* () {})(),
+  subscribeEvents: async () => makeSub((async function* () {})()),
   recover: async () => {},
   dispose: async () => {},
 };
@@ -203,9 +211,11 @@ describe("workflow http", () => {
         createdAt: 1,
       }),
       subscribeEvents: async () =>
-        (async function* () {
-          yield emitted;
-        })(),
+        makeSub(
+          (async function* () {
+            yield emitted;
+          })(),
+        ),
     };
     const sseApp = workflowRoutes({
       workflowExecutionService: sseService,
@@ -245,7 +255,7 @@ describe("workflow http", () => {
         status: "success",
         createdAt: 1,
       }),
-      subscribeEvents: async () => (async function* () {})(),
+      subscribeEvents: async () => makeSub((async function* () {})()),
       listExecutionEvents: async () => history,
     };
     const sseApp = workflowRoutes({
