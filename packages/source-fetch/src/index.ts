@@ -61,15 +61,30 @@ export interface GitSourceOptions {
 /** Single clone implementation (no async/sync duplication):
  *  depth-1 clone, movable ref via --branch, commit pin via post-clone
  *  HEAD verification. A pin mismatch removes the target and fails closed. */
+/** git URL allowlist: the url lands in `git clone` argv, so option-like
+ *  strings ("-...") and shell-executing transports (ext::) must never reach
+ *  the clone. Allowed: https?, ssh, git@host:path SCP form, absolute local
+ *  path (tests, on-disk repos). */
+function assertSafeGitUrl(url: string): string {
+  if (url.startsWith("-")) throw new Error(`unsafe git url (option injection): ${url}`);
+  if (/^(https?|ssh):\/\//i.test(url)) return url;
+  if (/^[a-zA-Z0-9._~-]+@[a-zA-Z0-9._-]+:/.test(url)) return url;
+  if (path.isAbsolute(url)) return url;
+  throw new Error(
+    `unsupported git url scheme (allowed: https?, ssh, git@host:, absolute path): ${url}`,
+  );
+}
+
 function cloneGitSource(opts: GitSourceOptions): FetchedSource {
   const slug = assertSafeSegment(opts.slug ?? slugify(opts.url));
   const target = path.resolve(opts.dataDir, slug);
   if (existsSync(target)) rmSync(target, { recursive: true, force: true });
   mkdirSync(path.resolve(opts.dataDir), { recursive: true });
   const pinnedRev = opts.ref && isCommitRef(opts.ref) ? opts.ref.toLowerCase() : null;
+  const url = assertSafeGitUrl(opts.url);
   const args = ["clone", "--depth", "1"];
   if (opts.ref && !pinnedRev) args.push("--branch", opts.ref);
-  args.push(opts.url, target);
+  args.push(url, target);
   const proc = Bun.spawnSync(["git", ...args], {
     cwd: opts.dataDir,
     stdio: ["ignore", "pipe", "pipe"],
@@ -86,6 +101,10 @@ function cloneGitSource(opts: GitSourceOptions): FetchedSource {
     rmSync(target, { recursive: true, force: true });
     throw new SourceRevMismatchError(pinnedRev, rev);
   }
+  // Git materializes repo-native symlinks as real symlinks; a pack tree with
+  // a link pointing outside would let the pack file viewers read arbitrary
+  // host files. Same rule as the zip path — no symlinks, fail closed.
+  validateExtractedEntries(target, target);
   return { root: target, rev };
 }
 
@@ -139,22 +158,59 @@ export async function materializeZipSource(opts: {
   const tmpZip = path.join(tmpdir(), `src-${slug}-${Date.now()}.zip`);
   const tmpDir = path.join(tmpdir(), `src-${slug}-unzip-${Date.now()}`);
   writeFileSync(tmpZip, opts.buffer);
-  // Pre-extraction safety: list the zip entries and reject escapes before
-  // unzip ever touches the filesystem (fail-closed, unzip-version-agnostic).
+  // Pre-extraction safety: list entry names and external attributes BEFORE
+  // unzip ever touches the filesystem. Fail-closed: a listing failure must
+  // abort (a corrupt central directory can bypass -Z1 while extraction still
+  // succeeds via local headers). Symlink entries are rejected here because
+  // unzip writes through them during extraction — before the post-extract
+  // validateExtractedEntries walk could ever see the escape. Size/count caps
+  // bound zip-bomb DoS.
+  const ZIP_MAX_FILES = 50_000;
+  const ZIP_MAX_UNCOMPRESSED = 1024 * 1024 * 1024; // 1 GB
   const listProc = Bun.spawnSync(["unzip", "-Z1", tmpZip], {
     stdio: ["ignore", "pipe", "pipe"],
   });
-  if (listProc.exitCode === 0) {
+  const attrProc = Bun.spawnSync(["unzip", "-Zl", tmpZip], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  try {
+    if (listProc.exitCode !== 0 || attrProc.exitCode !== 0) {
+      throw new Error("unsafe zip: cannot list entries (corrupt archive)");
+    }
     const entries = String(listProc.stdout ?? "")
       .split("\n")
       .filter((line) => line.length > 0);
-    try {
-      assertSafeZipEntries(entries);
-    } catch (err) {
-      rmSync(tmpZip, { force: true });
-      rmSync(tmpDir, { recursive: true, force: true });
-      throw err;
+    assertSafeZipEntries(entries);
+    const attrs = String(attrProc.stdout ?? "")
+      .split("\n")
+      .filter((line) => {
+        // Entry lines: mode token (lrwx/-rw/?rw) + format version ("2.0").
+        // Headers ("Archive: ...", "Zip file size: ...") and the footer
+        // ("N files, ...") never have both.
+        const cols = line.split(/\s+/);
+        return /^[ld?-][rwxst?-]{2,}/.test(cols[0] ?? "") && /^\d+(\.\d+)?$/.test(cols[1] ?? "");
+      });
+    if (attrs.length !== entries.length) {
+      throw new Error("unsafe zip: entry listing mismatch (possible control chars in names)");
     }
+    let totalUncompressed = 0;
+    attrs.forEach((line, i) => {
+      const cols = line.split(/\s+/);
+      // Unix-created zips carry an rwx-style mode string; symlinks are "l...".
+      if (/^l/.test(cols[0] ?? "")) {
+        throw new Error(`unsafe zip entry (symlink): ${entries[i]}`);
+      }
+      totalUncompressed += Number.parseInt(cols[3] ?? "0", 10) || 0;
+    });
+    if (entries.length > ZIP_MAX_FILES || totalUncompressed > ZIP_MAX_UNCOMPRESSED) {
+      throw new Error(
+        `unsafe zip: exceeds limits (max ${ZIP_MAX_FILES} files / ${ZIP_MAX_UNCOMPRESSED} bytes)`,
+      );
+    }
+  } catch (err) {
+    rmSync(tmpZip, { force: true });
+    rmSync(tmpDir, { recursive: true, force: true });
+    throw err;
   }
   mkdirSync(tmpDir, { recursive: true });
   try {
