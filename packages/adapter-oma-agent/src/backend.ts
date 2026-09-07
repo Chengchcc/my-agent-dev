@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
   AgentBackend,
   BackendEvent,
@@ -248,7 +249,10 @@ export class OmaBackend implements AgentBackend<"oma"> {
     if (!handle || handle.settled) {
       throw new OmaProcessError("not_found", `no live child for run: ${runId}`);
     }
-    const id = `steer-${runId}`;
+    // M11: unique suffix — concurrent steers for one run used to collide
+    // on the same id and the second waiter map entry silently orphaned
+    // the first pending promise (permanent hang).
+    const id = `steer-${runId}-${randomUUID().slice(0, 8)}`;
     const response = await this.sendCommand(handle, id, {
       id,
       type: "steer",
@@ -267,7 +271,8 @@ export class OmaBackend implements AgentBackend<"oma"> {
     if (!handle || handle.settled) {
       throw new OmaProcessError("not_found", `no live child for run: ${runId}`);
     }
-    const id = `approval-${runId}-${callId}`;
+    // M11: unique suffix — see steer; callId alone could collide on retry.
+    const id = `approval-${runId}-${callId}-${randomUUID().slice(0, 8)}`;
     const response = await this.sendCommand(handle, id, {
       id,
       type: "resolve_approval",
@@ -292,8 +297,9 @@ export class OmaBackend implements AgentBackend<"oma"> {
     }
     const sendAbort = (): void => {
       if (handle.settled) return;
-      void this.sendCommand(handle, `abort-${runId}`, {
-        id: `abort-${runId}`,
+      const id = `abort-${runId}-${randomUUID().slice(0, 8)}`;
+      void this.sendCommand(handle, id, {
+        id,
         type: "abort",
         runId,
       }).catch(() => {});
@@ -330,8 +336,15 @@ export class OmaBackend implements AgentBackend<"oma"> {
         error: "oma process did not stop within the abort grace period",
       });
       await this.reap(handle);
+      return;
     }
+    await this.reap(handle);
   }
+
+  /** Response bound for steer/abort/resolve_approval RPCs. The child
+   *  answers these from its live loop; 30s covers a loaded machine, and a
+   *  missing envelope must fail the caller instead of hanging forever. */
+  private static readonly COMMAND_TIMEOUT_MS = 30_000;
 
   /** Write a command and await its response envelope (id-matched). */
   private async sendCommand(
@@ -346,16 +359,24 @@ export class OmaBackend implements AgentBackend<"oma"> {
       decision?: "allow" | "deny";
     },
   ): Promise<{ success: boolean; error?: string }> {
-    const response = new Promise<{ success: boolean; error?: string }>((resolve) => {
-      let waiters = this.pendingResponses.get(handle.runId);
-      if (!waiters) {
-        waiters = new Map();
-        this.pendingResponses.set(handle.runId, waiters);
-      }
-      waiters.set(id, { resolve });
-    });
+    const { promise: response, resolve } = Promise.withResolvers<{
+      success: boolean;
+      error?: string;
+    }>();
+    let waiters = this.pendingResponses.get(handle.runId);
+    if (!waiters) {
+      waiters = new Map();
+      this.pendingResponses.set(handle.runId, waiters);
+    }
+    waiters.set(id, { resolve });
+    const timer = setTimeout(
+      () => resolve({ success: false, error: `command ${id} timed out` }),
+      OmaBackend.COMMAND_TIMEOUT_MS,
+    );
+    timer.unref?.();
     handle.proc.writeLine(JSON.stringify(command));
     const result = await response;
+    clearTimeout(timer);
     this.pendingResponses.get(handle.runId)?.delete(id);
     return result;
   }
