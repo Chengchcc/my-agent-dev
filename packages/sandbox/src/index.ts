@@ -76,6 +76,42 @@ try {
 }
 `;
 
+/** Post-exit drain grace: fires only when the pipe is still open (an
+ *  orphaned grandchild holds it) — buffered data resolves instantly. */
+function stallAfter(ms: number): Promise<"stalled"> {
+  const { promise, resolve } = Promise.withResolvers<"stalled">();
+  const t = setTimeout(() => resolve("stalled"), ms);
+  t.unref?.();
+  return promise;
+}
+
+/** Depth-first descendant reap for platforms without setsid (H3): pgrep -P
+ *  per generation, grandchildren killed before their parents so nothing
+ *  re-parents and survives. Best effort — a missing pgrep degrades to the
+ *  direct-child kill only. */
+function killDescendants(pid: number, signal: "SIGTERM" | "SIGKILL"): void {
+  let kids: number[];
+  try {
+    kids = Bun.spawnSync(["pgrep", "-P", String(pid)])
+      .stdout.toString()
+      .split("\n")
+      .flatMap((line) => {
+        const n = Number(line.trim());
+        return Number.isInteger(n) && n > 0 ? [n] : [];
+      });
+  } catch {
+    return;
+  }
+  for (const kid of kids) killDescendants(kid, signal);
+  for (const kid of kids) {
+    try {
+      process.kill(kid, signal);
+    } catch {
+      /* already gone */
+    }
+  }
+}
+
 export async function runInSandbox(input: SandboxInput): Promise<SandboxResult> {
   const timeoutMs = input.timeoutMs ?? 30_000;
   const dir = input.cwd ?? mkTempDir();
@@ -90,57 +126,80 @@ export async function runInSandbox(input: SandboxInput): Promise<SandboxResult> 
     const reader = stream.getReader();
     const chunks: Uint8Array[] = [];
     let total = 0;
+    let exitedSeen = false;
     for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
-      if (total <= MAX_STREAM_BYTES) chunks.push(value);
+      const read = reader.read();
+      // During the run: wait on data OR process exit. Losing to exit means
+      // EOF is pending (H3: an orphaned grandchild inheriting the pipe can
+      // hold it open forever) — switch to the bounded drain below.
+      const res = exitedSeen
+        ? await Promise.race([read, stallAfter(1_000)])
+        : await Promise.race([read, exited.then(() => "exited" as const)]);
+      if (res === "exited") {
+        exitedSeen = true;
+        continue;
+      }
+      if (res === "stalled" || res.done) {
+        // Post-exit the kernel buffer delivers instantly; stalling past the
+        // grace means an orphan still holds the pipe — cancel and use what
+        // we got instead of hanging on EOF.
+        if (res === "stalled") reader.cancel().catch(() => {});
+        break;
+      }
+      total += res.value.byteLength;
+      if (total <= MAX_STREAM_BYTES) chunks.push(res.value);
     }
     const buf = Buffer.concat(chunks).toString("utf8");
     return total > MAX_STREAM_BYTES
       ? `${buf.slice(0, MAX_STREAM_BYTES)}\n[sandbox: output truncated at ${MAX_STREAM_BYTES} bytes]`
       : buf;
   }
+  // Own process group: the timeout must reap grandchildren too, and a
+  // script that traps SIGTERM needs a SIGKILL escalation (a lone
+  // proc.kill() SIGTERM left executions stuck in "running" forever).
+  const hasSetsid = Bun.which("setsid") !== null;
+  const proc = Bun.spawn(
+    hasSetsid
+      ? ["setsid", "bun", "run", join(dir, "__sandbox_main.ts")]
+      : ["bun", "run", join(dir, "__sandbox_main.ts")],
+    {
+      cwd: dir,
+      env: { ...BASE_ENV, ...(input.env ?? {}) },
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  );
+  proc.stdin!.write(JSON.stringify(input.input ?? {}));
+  proc.stdin!.end();
+  const exited = proc.exited;
   try {
-    // Own process group: the timeout must reap grandchildren too, and a
-    // script that traps SIGTERM needs a SIGKILL escalation (a lone
-    // proc.kill() SIGTERM left executions stuck in "running" forever).
-    const hasSetsid = Bun.which("setsid") !== null;
-    const proc = Bun.spawn(
-      hasSetsid
-        ? ["setsid", "bun", "run", join(dir, "__sandbox_main.ts")]
-        : ["bun", "run", join(dir, "__sandbox_main.ts")],
-      {
-        cwd: dir,
-        env: { ...BASE_ENV, ...(input.env ?? {}) },
-        stdin: "pipe",
-        stdout: "pipe",
-        stderr: "pipe",
-      },
-    );
-    proc.stdin!.write(JSON.stringify(input.input ?? {}));
-    proc.stdin!.end();
     const killTree = (signal: "SIGTERM" | "SIGKILL") => {
-      // Group kill first (setsid made the child a leader); fall back to the
-      // direct child when no group exists.
+      // Group kill first (setsid made the child a leader); fall back to
+      // direct child + a depth-first descendant reap when no group exists
+      // (macOS has no setsid).
       try {
         process.kill(-proc.pid!, signal);
       } catch {
         proc.kill(signal);
+        killDescendants(proc.pid!, signal);
       }
     };
+    let escalation: Timer | undefined;
     const timer = setTimeout(() => {
       timedOut = true;
       killTree("SIGTERM");
-      const escalation = setTimeout(() => killTree("SIGKILL"), 2_000);
+      escalation = setTimeout(() => killTree("SIGKILL"), 2_000);
       escalation.unref?.();
     }, timeoutMs);
-    const [stdout, stderr, exitCode] = await Promise.all([
+    // H3: completion is gated on proc.exited, NEVER on pipe EOF.
+    const exitCode = await exited;
+    clearTimeout(timer);
+    clearTimeout(escalation);
+    const [stdout, stderr] = await Promise.all([
       cappedText(proc.stdout as ReadableStream<Uint8Array>),
       cappedText(proc.stderr as ReadableStream<Uint8Array>),
-      proc.exited,
     ]);
-    clearTimeout(timer);
     const marker = stdout.lastIndexOf("__SANDBOX_OUTPUT__:");
     let output: Record<string, unknown> | null = null;
     let cleanStdout = stdout;
