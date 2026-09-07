@@ -28,6 +28,16 @@ export function createGlobTool(opts: { workspaceRoot: string }): Tool {
     },
     async execute(input) {
       const { pattern, cwd } = input as { pattern: string; cwd?: string };
+      // M7: Bun.Glob scans OUTSIDE the workspace for `..` segments and
+      // absolute patterns — reject up front, and drop any match that
+      // still escapes (defense in depth).
+      const normalized = String(pattern).replaceAll("\\", "/");
+      if (normalized.startsWith("/") || normalized.split("/").includes("..")) {
+        return {
+          content: `Error: pattern must stay inside the workspace: ${String(pattern)}`,
+          isError: true,
+        };
+      }
       let validatedCwd = opts.workspaceRoot;
       if (cwd) {
         try {
@@ -41,10 +51,11 @@ export function createGlobTool(opts: { workspaceRoot: string }): Tool {
       }
 
       const LIMIT = 500;
-      const glob = new Bun.Glob(pattern);
+      const glob = new Bun.Glob(normalized);
       const matches: string[] = [];
       let truncated = false;
       for await (const m of glob.scan({ cwd: validatedCwd, absolute: false, onlyFiles: true })) {
+        if (m.includes("..")) continue;
         if (matches.length >= LIMIT) {
           truncated = true;
           break;
