@@ -1,5 +1,6 @@
 import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { parseWorkflow } from "@chengchenccc/workflow";
 import { Elysia, t } from "elysia";
 import { sseResponse } from "../../http/response.js";
 import { HttpError } from "../../infra/errors.js";
@@ -36,6 +37,17 @@ export function workflowRoutes(deps: {
 }) {
   const svc = deps.workflowExecutionService;
   const dir = deps.workflowDir;
+
+  // The id is a bare filename stem (same contract as mcp.ts safePath).
+  // Elysia decodes %2F inside path params, so "../" survives routing —
+  // validate the id, never join raw params.
+  const WORKFLOW_ID_RE = /^[A-Za-z0-9._-]+$/;
+  function workflowFile(workflowId: string): string {
+    if (!WORKFLOW_ID_RE.test(workflowId)) {
+      throw new HttpError(`invalid workflow id: ${workflowId}`, 400);
+    }
+    return join(dir, `${workflowId}.workflow.json`);
+  }
 
   return new Elysia()
     .get("/api/workflow-definitions", async () => {
@@ -76,7 +88,7 @@ export function workflowRoutes(deps: {
       return { definitions };
     })
     .get("/api/workflow-definitions/:workflowId", async ({ params }) => {
-      const file = join(dir, `${params.workflowId}.workflow.json`);
+      const file = workflowFile(params.workflowId);
       const raw = await Bun.file(file).text();
       return { definition: JSON.parse(raw) };
     })
@@ -84,7 +96,18 @@ export function workflowRoutes(deps: {
       "/api/workflow-definitions/:workflowId",
       async ({ params, body }) => {
         mkdirSync(dir, { recursive: true });
-        const file = join(dir, `${params.workflowId}.workflow.json`);
+        const file = workflowFile(params.workflowId);
+        // Validate BEFORE persisting: parseWorkflow is the trust boundary the
+        // trigger scheduler (and every execution) relies on. An unvalidated
+        // definition used to brick trigger sync / backend boot.
+        try {
+          parseWorkflow(body.definition);
+        } catch (err) {
+          throw new HttpError(
+            `invalid workflow definition: ${err instanceof Error ? err.message : String(err)}`,
+            400,
+          );
+        }
         writeFileSync(file, JSON.stringify(body.definition, null, 2));
         deps.definitionEvents?.emit(params.workflowId, { trigger: "save" });
         void deps.resyncTriggers?.();
@@ -116,7 +139,7 @@ export function workflowRoutes(deps: {
     .post(
       "/api/workflow-definitions/:workflowId/chat-patch",
       async ({ params, body }) => {
-        const raw = await Bun.file(join(dir, `${params.workflowId}.workflow.json`)).text();
+        const raw = await Bun.file(workflowFile(params.workflowId)).text();
         const definition = JSON.parse(raw);
         return await svc.chatPatch(params.workflowId, definition, body.instruction);
       },
@@ -127,7 +150,7 @@ export function workflowRoutes(deps: {
     .post(
       "/api/workflow-definitions/:workflowId/dry-run",
       async ({ params, body }) => {
-        const raw = await Bun.file(join(dir, `${params.workflowId}.workflow.json`)).text();
+        const raw = await Bun.file(workflowFile(params.workflowId)).text();
         const definition = JSON.parse(raw);
         return dryRunWorkflow(
           definition,
@@ -145,7 +168,7 @@ export function workflowRoutes(deps: {
       },
     )
     .delete("/api/workflow-definitions/:workflowId", async ({ params }) => {
-      const file = join(dir, `${params.workflowId}.workflow.json`);
+      const file = workflowFile(params.workflowId);
       rmSync(file, { force: true });
       void deps.resyncTriggers?.();
       return { ok: true };
@@ -153,11 +176,18 @@ export function workflowRoutes(deps: {
     .post(
       "/api/workflow-executions",
       async ({ body, set }) => {
+        // Bare "<stem>.workflow.json" only — loadWorkflow joins dataDir/workflows
+        // with this path, so an unchecked "../../" reads arbitrary JSON files
+        // (and echoes their parsed content back in the execution row).
+        const stem = /^(.+)\.workflow\.json$/.exec(body.workflowRef.path)?.[1];
+        if (!stem || !WORKFLOW_ID_RE.test(stem)) {
+          throw new HttpError(`invalid workflowRef.path: ${body.workflowRef.path}`, 400);
+        }
         const ref: WorkflowRef = { repo: body.workflowRef.repo, path: body.workflowRef.path };
         const raw = await deps.loadWorkflow(ref);
         const definition = JSON.parse(raw);
         set.status = 201;
-        const workflowId = ref.path.replace(/\.workflow\.json$/, "");
+        const workflowId = stem;
         const input: Record<string, unknown> = { ...(body.input ?? {}) };
         if (body.artifacts?.length) input.__artifacts = body.artifacts;
         return await svc.startExecution({

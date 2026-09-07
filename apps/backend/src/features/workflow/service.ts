@@ -701,7 +701,8 @@ export function createWorkflowExecutionService(
         routedTo: r.routedTo ?? [],
       }));
       const routedTo = routeOutgoing(nodeId, row.definition, arr, row.store, answer);
-      await deps.port.markPendingHumanResolved(executionId, nodeId);
+      const claimed = await deps.port.markPendingHumanResolved(executionId, nodeId);
+      if (!claimed) throw new HttpError("Human task already resolved", 409);
       await deps.port.updateNodeRun(executionId, nodeId, {
         status: "completed",
         output: answer,

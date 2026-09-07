@@ -26,9 +26,21 @@ export function createWorkflowTriggerScheduler(
   const single = new Set<string>(); // per-workflow single-flight
 
   function loadDefinitions(): WorkflowDefinition[] {
-    return readdirSync(deps.workflowDir)
-      .filter((f) => f.endsWith(".workflow.json"))
-      .map((f) => parseWorkflow(JSON.parse(readFileSync(join(deps.workflowDir, f), "utf8"))));
+    // Per-file isolation: one malformed/unparsable definition must not kill
+    // trigger sync for every OTHER workflow (nor brick backend boot, which
+    // awaits sync()). Skip + log; the file stays visible in the UI.
+    const defs: WorkflowDefinition[] = [];
+    for (const f of readdirSync(deps.workflowDir).filter((f) => f.endsWith(".workflow.json"))) {
+      try {
+        defs.push(parseWorkflow(JSON.parse(readFileSync(join(deps.workflowDir, f), "utf8"))));
+      } catch (err) {
+        console.error(
+          `[trigger-scheduler] skipping unparsable definition ${f}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+    return defs;
   }
 
   async function fire(workflowId: string, cron?: string): Promise<void> {
@@ -57,7 +69,16 @@ export function createWorkflowTriggerScheduler(
         const list: { stop(): void }[] = [];
         for (const t of def.triggers ?? []) {
           if (t.type === "cron" && t.enabled !== false) {
-            list.push(deps.schedule(t.cron, () => void fire(def.id, t.cron)));
+            try {
+              list.push(deps.schedule(t.cron, () => void fire(def.id, t.cron)));
+            } catch (err) {
+              // A bad cron expression must not take down the whole
+              // trigger subsystem — skip this trigger, keep the rest.
+              console.error(
+                `[trigger-scheduler] invalid cron "${t.cron}" on ${def.id}:`,
+                err instanceof Error ? err.message : err,
+              );
+            }
           }
         }
         handles.set(def.id, list);

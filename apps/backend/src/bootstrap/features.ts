@@ -183,6 +183,7 @@ export async function installFeatures(services: BackendServices): Promise<Instal
           sourceKind: ctx.sourceKind,
           sourceUrl: ctx.sourceUrl,
           versionRef: ctx.versionRef,
+          expectedRev: ctx.expectedRev,
         },
         {
           dataDir: config.dataDir,
@@ -963,7 +964,13 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   const workflowApp = workflowRoutes({
     workflowExecutionService,
     loadWorkflow: async (ref) => {
-      const file = join(config.dataDir, "workflows", ref.path);
+      // Containment: http.ts validates the "<stem>.workflow.json" shape, but
+      // this is the boundary — resolve and verify before touching disk.
+      const workflowsDir = join(config.dataDir, "workflows");
+      const file = join(workflowsDir, ref.path);
+      if (!resolve(file).startsWith(resolve(workflowsDir))) {
+        throw new Error(`workflow path escapes workflows dir: ${ref.path}`);
+      }
       return await Bun.file(file).text();
     },
     workflowDir: join(config.dataDir, "workflows"),

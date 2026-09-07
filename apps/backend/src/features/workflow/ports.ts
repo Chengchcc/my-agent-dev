@@ -26,7 +26,9 @@ export interface WorkflowExecutionPort {
   listNodeRuns(executionId: string): Promise<WorkflowNodeRunRow[]>;
   createPendingHuman(row: WorkflowPendingHumanRow): Promise<WorkflowPendingHumanRow>;
   getPendingHuman(executionId: string, nodeId: string): Promise<WorkflowPendingHumanRow | null>;
-  markPendingHumanResolved(executionId: string, nodeId: string): Promise<void>;
+  /** Claims the pending human task atomically: returns false when another
+   *  resolver already claimed it (conditional UPDATE on status='pending'). */
+  markPendingHumanResolved(executionId: string, nodeId: string): Promise<boolean>;
   appendExecutionEvent(input: {
     executionId: string;
     event: string;

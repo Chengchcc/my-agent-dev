@@ -185,15 +185,20 @@ export function sqliteWorkflowExecutionAdapter(db: Database): WorkflowExecutionP
       return r ? toPending(r) : null;
     },
     async markPendingHumanResolved(executionId, nodeId) {
-      await d
+      // Conditional write: two concurrent resolves must not BOTH pass the
+      // service-level status check and start duplicate drive loops.
+      const claimed = await d
         .update(workflowPendingHuman)
         .set({ status: "resolved", terminalAt: Date.now() })
         .where(
           and(
             eq(workflowPendingHuman.executionId, executionId),
             eq(workflowPendingHuman.nodeId, nodeId),
+            eq(workflowPendingHuman.status, "pending"),
           ),
-        );
+        )
+        .returning({ executionId: workflowPendingHuman.executionId });
+      return claimed.length > 0;
     },
     async listRunningExecutions() {
       const rows = await d

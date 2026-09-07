@@ -103,7 +103,9 @@ function ramPort() {
         pendingHuman.get(`${executionId}:${nodeId}`) ?? null,
       markPendingHumanResolved: async (executionId: string, nodeId: string) => {
         const r = pendingHuman.get(`${executionId}:${nodeId}`);
-        if (r) r.status = "resolved";
+        if (!r || r.status !== "pending") return false;
+        r.status = "resolved";
+        return true;
       },
       listRunningExecutions: async () => [],
       listWaitingHumanExecutions: async () => [],
