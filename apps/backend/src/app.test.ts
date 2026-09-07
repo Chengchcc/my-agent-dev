@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { createApp } from "./app.js";
-import { installFeatures } from "./bootstrap/features.js";
-import { createBackendServices } from "./bootstrap/services.js";
 
+// Env MUST be set before the feature-graph modules load: lark-bot registry
+// runs parseEnv(process.env) at module scope. Static imports here would
+// evaluate that graph before the env lines below (this file sorts before
+// bootstrap/features.test.ts, which relies on the same ordering) — hence
+// the dynamic imports inside setupApp, same pattern as features.test.ts.
 process.env.BACKEND_AUTH_TOKEN = "test-token";
 process.env.ANTHROPIC_API_KEY = "sk-test";
 
@@ -44,8 +46,11 @@ async function setupApp() {
 
   // Single-step cast, same boundary as bootstrap/features.test.ts setup():
   // the partial test config is a subset of the BackendServices config.
+  const { createBackendServices } = await import("./bootstrap/services.js");
   const services = createBackendServices(cfg as Parameters<typeof createBackendServices>[0]);
+  const { installFeatures } = await import("./bootstrap/features.js");
   const installed = await installFeatures(services);
+  const { createApp } = await import("./app.js");
   return { app: createApp(TOKEN, installed.featureSet), dir };
 }
 
