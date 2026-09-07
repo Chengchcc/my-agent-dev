@@ -928,6 +928,11 @@ export async function installFeatures(services: BackendServices): Promise<Instal
   const workflowEventBus = new ExecutionEventBus();
   const workflowNodeRunners = createNodeRunners({
     dataDir: config.dataDir,
+    // H2: script nodes are opt-in; the sandbox denies reads over the
+    // data dir and the deployment's .env, and cuts network (bwrap/
+    // sandbox-exec when available).
+    scriptsEnabled: config.workflowScriptsEnabled,
+    denyReadDirs: config.workflowScriptDenyReadDirs,
     onLog: (executionId, data) =>
       workflowEventBus.emit({ event: "script_log", executionId, ts: Date.now(), data }),
   });

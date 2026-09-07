@@ -35,6 +35,10 @@ export interface BackendConfig {
   /** Comma-separated built-in MCP servers to inject into agent workspaces
    *  (product-tools, workflow). Absent = product-tools only. */
   enabledMcpServers?: string;
+  /** H2: workflow script nodes execute unattended code — opt-in. */
+  workflowScriptsEnabled: boolean;
+  /** H2: directories the workflow script sandbox must not read. */
+  workflowScriptDenyReadDirs: string[];
 }
 
 /**
@@ -65,5 +69,8 @@ export function loadConfig(env: Env = parseEnv(process.env)): BackendConfig {
     productToolsMcpUrl: env.PRODUCT_TOOLS_MCP_URL,
     smokeCron: env.SMOKE_CRON,
     enabledMcpServers: env.ENABLED_MCP_SERVERS,
+    workflowScriptsEnabled:
+      env.WORKFLOW_SCRIPTS_ENABLED === "1" || env.WORKFLOW_SCRIPTS_ENABLED === "true",
+    workflowScriptDenyReadDirs: [dataDir, resolve(process.cwd(), ".env")],
   };
 }

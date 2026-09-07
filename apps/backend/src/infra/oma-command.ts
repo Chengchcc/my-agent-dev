@@ -36,6 +36,10 @@ export function resolveOmaCommand(
     GROQ_API_KEY: process.env.GROQ_API_KEY,
     OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
     OMA_HOME: process.env.OMA_HOME,
+    // H6: the oma child's CWD is the agent-writable workspace — never load
+    // a workspace-level models.yml from product runs (provider baseUrl
+    // hijack / API-key exfiltration). Standalone sessions are unaffected.
+    OMA_WORKSPACE_CATALOG: "0",
     // Test determinism knobs (fake provider) - forwarded so in-process
     // smokes get the same scripted child as the integration harness.
     OMA_FAKE_PROVIDER: process.env.OMA_FAKE_PROVIDER,
