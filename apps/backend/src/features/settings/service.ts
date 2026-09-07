@@ -18,8 +18,19 @@ function maskSecret(v: string): string {
   return v.length > 4 ? `****${v.slice(-4)}` : "****";
 }
 
-function isSecretKey(k: string): boolean {
+export function isSecretKey(k: string): boolean {
   return /KEY|TOKEN|SECRET|PASSWORD/i.test(k);
+}
+
+/** Mask secret-shaped values before they leave the service (H5): a key
+ *  matching isSecretKey masks its string value; object values recurse so
+ *  `provider.<id>.apiKey` is masked without masking `baseUrl`. */
+function maskDeep(k: string, v: unknown): unknown {
+  if (typeof v === "string" && isSecretKey(k)) return maskSecret(v);
+  if (typeof v === "object" && v !== null && !Array.isArray(v)) {
+    return Object.fromEntries(Object.entries(v).map(([k2, v2]) => [k2, maskDeep(k2, v2)]));
+  }
+  return v;
 }
 
 export function createSettingsService(deps: {
@@ -48,7 +59,7 @@ export function createSettingsService(deps: {
       const result: Record<string, unknown> = {};
       for (const row of rows) {
         try {
-          result[row.key] = JSON.parse(row.value);
+          result[row.key] = maskDeep(row.key, JSON.parse(row.value));
         } catch {
           // skip unparseable
         }

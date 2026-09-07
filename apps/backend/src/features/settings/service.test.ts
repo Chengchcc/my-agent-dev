@@ -57,6 +57,17 @@ describe("SettingsService", () => {
     expect(all["all.three"]).toBe(3);
   });
 
+  test("getAll masks secret-shaped values (H5)", () => {
+    svc.set("provider.anthropic", { apiKey: "sk-ant-secret-9z", baseUrl: "https://api.x" });
+    svc.set("session.token", "tok-1234");
+    const all = svc.getAll();
+    const provider = all["provider.anthropic"] as { apiKey: string; baseUrl: string };
+    expect(provider.apiKey).toMatch(/^\*{4}/);
+    expect(provider.apiKey).not.toContain("sk-ant-secret-9z");
+    expect(provider.baseUrl).toBe("https://api.x");
+    expect(all["session.token"]).toMatch(/^\*{4}1234$/);
+  });
+
   describe("getSystemInfo", () => {
     const KEY = "ANTHROPIC_API_KEY";
     let saved: string | undefined;
