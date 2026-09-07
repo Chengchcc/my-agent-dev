@@ -118,4 +118,29 @@ describe("workflow trigger scheduler", () => {
     expect(scheduled).toHaveLength(0);
     await sched.dispose();
   });
+
+  test("cron tick swallows startExecution failures (H4)", async () => {
+    writeFileSync(join(dir, "a.workflow.json"), JSON.stringify(cronDef("a", "* * * * *")));
+    let calls = 0;
+    const sched = createWorkflowTriggerScheduler({
+      workflowDir: dir,
+      startExecution: async () => {
+        calls++;
+        throw new Error("SQLITE_BUSY");
+      },
+      schedule: (cron, fn) => {
+        scheduled.push({ cron, fn });
+        return { stop() {} };
+      },
+    });
+    await sched.sync();
+    // Pre-H4 this rejection escaped the Bun.cron callback and killed the
+    // whole backend process. fire() settles entirely in microtasks (no real
+    // timers inside), so a microtask flush observes the swallowed error.
+    scheduled[0]!.fn();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(calls).toBe(1);
+    await sched.dispose();
+  });
 });

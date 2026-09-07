@@ -56,6 +56,14 @@ export function createWorkflowTriggerScheduler(
         input: {},
         triggeredBy: cron ? `cron:${cron}` : "manual",
       });
+    } catch (err) {
+      // A rejected fire (SQLITE_BUSY, disk full, …) must never reject out of
+      // the Bun.cron callback: an unhandled rejection kills the whole
+      // backend process. Log and keep serving.
+      console.error(
+        `[trigger-scheduler] fire ${workflowId} (${cron ?? "manual"}) failed:`,
+        err instanceof Error ? err.message : err,
+      );
     } finally {
       single.delete(workflowId);
     }
