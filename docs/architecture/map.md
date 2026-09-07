@@ -9,7 +9,7 @@ flowchart LR
   Conversation[Conversation] --> History[Conversation History]
   Conversation --> Context[Agent Context]
   Context --> Run[Agent Run]
-  Automation[Task / Cron / Loop] --> Run
+  Automation[Workflow (cron / 手动)] --> Run
   Tools[Product Tools] --> Run
   Run --> Backend[Agent Backends ×4]
   Backend --> Child[oma child]
@@ -62,10 +62,10 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  Cron[Cron] --> Run[Agent Run]
-  Loop[Loop] --> Run
+  Trigger[Cron / 手动] --> Exec[Workflow Execution]
+  Exec --> Run[Agent Run]
   Run --> Branch[Context Branch]
   Run --> Backend[Agent Backend]
 ```
 
-Cron、Loop 选择 Agent 与 Context Branch，但不依赖子进程内部实现。
+Workflow Execution（cron 或手动触发）选择 Agent 与 Context Branch，但不依赖子进程内部实现。

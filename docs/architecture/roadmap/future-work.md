@@ -9,8 +9,6 @@ depends_on:
   - runs.output-and-live-updates
   - surfaces.lark
   - runtime.oma
-  - foundations.loop
-  - backend.loop-runner
 used_by:
 ---
 
@@ -30,7 +28,7 @@ used_by:
 - **更细的投影可见性策略**　当前 assistant 消息经 `onRunMessage` 直写账本，projection bridge 只做 best-effort fan-out。未来可引入更细的可见性规则（按成员、按事件子类型），但任何扩展都应保持「assistant 消息与人类消息同一入口直写账本」「账本为唯一对话事实」这两条不变式。依赖：[会话投影](../runs/output-and-live-updates.md)、[事实与投影](../foundations/facts-and-projections.md)。
 - **端去重的统一化**　**已解决。** 飞书侧的 `canSkipFinalLedgerText` 及相关 dedup 逻辑已随 Lark 重构移除，SSE 事件直接渲染。当前仅 Web + Lark 两端，各自无去重负担。若未来接入更多端再考虑共享去重层。
 - **恢复语义的强化**　**历史方案，已随 Phase 5/6 删除。** checkpointer 的 saveInterrupt / consumeInterrupt 与整个 session 持久化体系已不存在。当前语义：中断/崩溃 = 当前 Agent Run failed；下一个输入 = 新 Run = 从 Agent Context full projection 重建，无恢复路径。
-- **Issue 协作工作流演进**　**已被 Loop 取代。** Issue 本体与 Orchestrator 模块已删除（无 `features/orchestrator/`、无 Issue CRUD），工作流编排能力由 Loop 系统承接（workflow-first：fix/verify 子 agent + human gate，见 [ADR 0025](../../adr/0025-loop-workflow-first-execution.md)）。M18.3-M18.7 里程碑失效，Project 实体化已独立落地（`features/project/` CRUD 已完成）。旧 `span_origin` 表（含 issueId 列）已随 Phase 6 迁移 0020 删除。
+- **Issue 协作工作流演进**　**已被 Workflow 取代。** Issue 本体与 Orchestrator 模块已删除（无 `features/orchestrator/`、无 Issue CRUD），工作流编排能力由 Workflow 承接（见 [Agentic Workflow](../workflow.md)）。M18.3-M18.7 里程碑失效，Project 实体化已独立落地（`features/project/` CRUD 已完成）。旧 `span_origin` 表（含 issueId 列）已随 Phase 6 迁移 0020 删除。
 - **@提及收编进编排**　**已解决。** Orchestrator 已删除，@提及自动触发（`conversation/service.ts` 的 `#forkAgentRuns`）是唯一驱动来源。两套驱动的问题不存在了。
 - **产品力审查发现（2026-07-13）**　从业务故事线（在场协作 / 离场托付 / 系统管理）出发的全面审查，识别出以下产品缺口。**大部分已于 2026-07-14 修复**，标注 ✅ 已完成 / ⏳ 待办。
 
@@ -53,7 +51,7 @@ used_by:
   |---|---|---|---|---|
   | **P0** | 连接状态指示器 | `network-status.tsx` 65 行：`navigator.onLine` + online/offline 事件 + 顶部 banner（offline 红色 / 恢复绿色 3s 后隐藏） | `streamConn` 状态已有但零 UI 反馈，SSE 断了用户看到冻结画面无感知 | 1 小时 |
   | **P1** | Agent 关系图 + Wake Routing | 两种关系 `assigns_to`/`collaborates_with`（带 weight + instruction）；关系变更自动生成 `RELATIONSHIPS.md` 写入 agent workspace；coordinator 选择 ~20 行算法（遍历关系图找无 parent 的根节点）；wake routing ~55 行（有 @mention 只唤醒被提及的；无 @mention 自动选 coordinator） | agent 之间扁平，靠用户手动 @mention 路由，无 coordinator 概念 | 3 天 |
-  | **P1** | Task 看板 + Claim Window | 5 状态 `todo→in_progress→in_review→done/closed`，严格转换矩阵；claim 窗口 ~155 行纯内存（@mention 的 agent 有 30s 独占认领权，超时放给其他 agent）；actor 权限（agent 不能 close/reopen，只有 creator 能 accept）；agent 旁路 `CompleteTaskForAgent` 跳过 guard 自动提交 review | Loop `ItemState` 已有 priority/step/awaiting_review，数据模型在但缺 UI 看板层 | 3-5 天 |
+  | **P1** | Task 看板 + Claim Window | 5 状态 `todo→in_progress→in_review→done/closed`，严格转换矩阵；claim 窗口 ~155 行纯内存（@mention 的 agent 有 30s 独占认领权，超时放给其他 agent）；actor 权限（agent 不能 close/reopen，只有 creator 能 accept）；agent 旁路 `CompleteTaskForAgent` 跳过 guard 自动提交 review | 原依据的 Loop `ItemState` 已删除，本项需按现行 Workflow 重新评估 | 3-5 天 |
   | **P2** | CMD+K 全局搜索 | ✅ 已完成 | 全屏 overlay + 300ms 防抖 + ↑↓Enter Esc 导航 + 点击跳对话 + 右下角 ⌘K 提示按钮。后端 `searchLedger` JOIN member/conversation 返回 sender/title | 2026-07-22 |
 
   Solo 的设计亮点模式（实现时参考）：
@@ -125,21 +123,6 @@ used_by:
 
 - **删除 transport / heartbeat 残骸**　**已解决。** `attempt` 表的 `pid` / `heartbeat_at` 列已删除（migration 0009），reaper 心跳分支已移除。Phase 6 进一步删除了整个 span/attempt/control_plane_event/span_origin 审计体系（迁移 0020）；Ops 面以 Agent Run 为中心（`/api/agent-runs`），无 session/span 概念。
 - **Harness 运行时加固（M22）**　**历史方案，已随 Phase 5/6 删除。** harness/framework 包与进程内运行循环已不存在；其产物（steering/follow-up、工具并行、压缩管线）以 Oma Runtime 形式保留在 `packages/agent`（per-Run、子进程内），相关当前页面见 [Oma](../runtime/oma.md)。
-
-## Loop 剩余功能（2026-08-20 记录，先测试后补）
-
-Loop 已闭环：发现（auto-triage）/ 创建（四要素+workflow 模板）/ 运行（workflow 一等 fix/verify）/ 评估（verifyCommands 强制验收）/ 恢复（超时取消 + Doctor 巡检）/ 管理（taskClass/defer）。设计见 ADR 0025。以下为**未实现/待验证**项，先做真实运行验证，再按需推进：
-
-| 优先级 | 项 | 说明 |
-|---|---|---|
-| P0 | **真实运行验证** | 用真实模型在真实 repo 跑完整 loop，暴露实际短板（fix 质量 / verify 命令真实性 / triage 发现质量） |
-| P1 | **loop 级监控** | 产出数、验收通过率、烂尾率聚合视图（telemetry 是 run 级，loop 级无统计） |
-| P1 | **inbox 自动清理** | stale/dead item 自动归档或过期（doctor 已把 stale 转 inbox，仍缺自动收尾） |
-| P2 | **webhook 触发** | 外部 CI/issue 推送信号到 `POST /triage`（已预留落点，需 secret） |
-| P2 | **verify 双模型** | fix 用贵模型、verify 用便宜模型（`agent()` per-agent model 扩展） |
-| P2 | **配置演进** | LOOP.md 在线编辑 / refine 真正按新意图重新生成（接 loop-config-generator AI） |
-| P2 | **cron next-run 展示** | UI 显示下次触发时间（Bun.cron 不暴露，需自算） |
-
 
 ## 处理原则
 

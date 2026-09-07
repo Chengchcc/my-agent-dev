@@ -175,7 +175,7 @@ mounted MCP 工具表（native + MCP + plugin 汇总）统一过滤（--tools �
 
 - **ADR 0026 威胁模型**（单用户本地产品，agent 半信任）：LAN/hosted 前需补 bash 约束超 cwd 检查、MCP env/headers 静态加密、移除 mock 登录面
 - `docs/future-work.md`：native 工具 ask 范围目前仅覆盖插件 code 工具的补全（run-runtime 级 gate 已有）；plugin update 命令等小项
-- `docs/architecture/roadmap/future-work.md` 自标「需复核」（2026-08-13/20 基线，Loop 条目已随 Loop 删除失效），读时以 ADR 索引为准
+- `docs/architecture/roadmap/future-work.md` 自标「需复核」（2026-08-13 基线），读时以 ADR 索引为准
 - loop_item / loop_budget / cron_job 已随 d35e7dd6 从 schema 删除（DROP 迁移 0042/0043）；仅 `db.test.ts` Phase-6 fixture 作为历史迁移测试有意保留对它们的 INSERT/断言
 
 ## 常用命令
