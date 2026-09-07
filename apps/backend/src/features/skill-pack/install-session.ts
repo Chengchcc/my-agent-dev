@@ -178,6 +178,7 @@ export async function runSync(source: InstallSource, deps: InstallSessionDeps): 
     const resetResult = await git(["reset", "--hard", "FETCH_HEAD"], packDir);
     if (resetResult.exitCode !== 0) throw new Error(`git reset failed: ${resetResult.stderr}`);
     if (!(await validatePackDir(cwd, source.packId))) {
+      throw new Error("synced pack has no valid SKILL.md");
     }
     await deps.port.applyInstallTransition(source.packId, "ready", {
       installedRef,
