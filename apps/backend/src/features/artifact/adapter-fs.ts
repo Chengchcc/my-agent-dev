@@ -103,10 +103,12 @@ export function createArtifactFsAdapter(root: string): ArtifactPort {
       }
     },
     async list(folder) {
-      const dir = folder ? join(rootResolved, folder) : rootResolved;
-      const base = dir;
-      if (folder && resolve(dir).startsWith(rootResolved) && resolve(dir) !== rootResolved) {
-        if (!existsSyncSafe(base)) return [];
+      // Reject BEFORE any filesystem access: a folder resolving outside the
+      // root must never reach existsSync/walk (M13 — the old guard only
+      // existence-checked in-root paths, letting escaped dirs be walked).
+      const base = resolve(rootResolved, folder ?? "");
+      if (base !== rootResolved && !base.startsWith(rootResolved + sep)) {
+        throw new Error("artifact path escapes root");
       }
       if (!existsSyncSafe(base)) return [];
       const out: ArtifactMeta[] = [];

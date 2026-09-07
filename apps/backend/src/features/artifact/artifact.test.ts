@@ -56,3 +56,12 @@ test("list and delete", async () => {
   await svc.delete("artifacts://a/x.txt");
   expect(await svc.exists("artifacts://a/x.txt")).toBe(false);
 });
+
+test("list rejects folders escaping the root (M13)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "art-"));
+  const adapter = createArtifactFsAdapter(dir);
+  // Pre-M13 the guard only checked in-root paths, so an escaped dir was
+  // walked synchronously (existence oracle + name enumeration).
+  await expect(adapter.list("../outside")).rejects.toThrow(/escapes root/);
+  await expect(adapter.list("a/../../../etc")).rejects.toThrow(/escapes root/);
+});
