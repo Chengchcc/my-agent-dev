@@ -27,24 +27,34 @@ export interface SpawnedClaudeProcess {
 }
 
 async function* readLines(stream: ReadableStream<Uint8Array>): AsyncIterable<string> {
+  // M12: the buffer is trimmed to its last MAX_FRAME bytes after every
+  // chunk — a line-less flood (no \n) previously grew the heap unbounded.
+  const MAX_FRAME = 10 * 1024 * 1024;
   const reader = stream.getReader();
   const decoder = new TextDecoder();
-  let buffer = "";
-  const MAX_FRAME = 10 * 1024 * 1024;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+  let buffer = new Uint8Array(0);
+  try {
     for (;;) {
-      const nl = buffer.indexOf("\n");
-      if (nl === -1) break;
-      const line = buffer.slice(0, nl);
-      buffer = buffer.slice(nl + 1);
-      if (line.length > MAX_FRAME) continue;
-      yield line;
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value.length === 0) continue;
+      const next = new Uint8Array(buffer.length + value.length);
+      next.set(buffer, 0);
+      next.set(value, buffer.length);
+      buffer = next;
+      if (buffer.length > MAX_FRAME) buffer = buffer.slice(buffer.length - MAX_FRAME);
+      let start = 0;
+      for (let i = 0; i < buffer.length; i++) {
+        if (buffer[i] !== 0x0a) continue;
+        if (i - start <= MAX_FRAME) yield decoder.decode(buffer.subarray(start, i));
+        start = i + 1;
+      }
+      buffer = buffer.slice(start);
     }
+    if (buffer.length > 0 && buffer.length <= MAX_FRAME) yield decoder.decode(buffer);
+  } finally {
+    reader.releaseLock();
   }
-  if (buffer.length > 0) yield buffer;
 }
 
 export function spawnClaudeProcess(
