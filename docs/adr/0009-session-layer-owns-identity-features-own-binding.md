@@ -10,9 +10,9 @@ Superseded(was Accepted)
 
 ADR 0008 决定塌缩 harness 调用层，删除 `SessionFactory` / `SessionSpec` / `executeAgentRun`，sessionId 改为 ULID 去语义。但 0008 有四个缺口：
 
-**缺口 1：session 复用断裂。** 决策 4 提出 `conversation_session` 表做映射，但 plan 延后。span 表存 `spanId → sessionId`，从 `conversationId` 要先查最近 spanId 再拿 sessionId——拿错表。进程重启后 conversation 第一条新消息生成新 ULID → 新 sessionId → checkpointer 旧历史成孤儿 → **agent 失忆**。
+**缺口 1：session 复用断裂。** 决策 4 提出 `conversation_session` 表做映射，但 plan 延后。span 表存 `spanId → sessionId`，从 `conversationId` 要先查最近 spanId 再拿 sessionId，等于查错了表。进程重启后 conversation 第一条新消息生成新 ULID → 新 sessionId → checkpointer 旧历史成孤儿 → **agent 失忆**。
 
-**缺口 2：身份泄漏到 caller。** `deriveSessionId(conversationId, memberId) = ${conversationId}:${memberId}` 用确定性拼接「假装」不需要持久化。每多一个使用 session 的 feature，就要发明一套拼接规则。`Checkpointer` 虽然是 framework 接口，但不拥有 sessionId——caller 要自己算出 sessionId 才能调 checkpointer。身份和持久化被割裂。
+**缺口 2：身份泄漏到 caller。** `deriveSessionId(conversationId, memberId) = ${conversationId}:${memberId}` 用确定性拼接「假装」不需要持久化。每多一个使用 session 的 feature，就要发明一套拼接规则。`Checkpointer` 虽然是 framework 接口，但不拥有 sessionId，caller 要自己算出 sessionId 才能调 checkpointer。身份和持久化被割裂。
 
 **缺口 3：追踪逻辑散到每个 feature。** `executeAgentRun` 绑定了 DB 追踪（insertSpanOrigin）、run/attempt 生命周期（startMainRun/notifyRunComplete）、session 创建+执行。删掉 executeAgentRun 后，追踪逻辑散到 conversation/cron/orchestrator 三处复制粘贴。
 
@@ -308,11 +308,11 @@ interface SessionConfig {
 // 这些 caller 不传、不感知
 ```
 
-`retry/compaction/maxSteps` 从 caller 可见接口中移除——它们是 harness 内部机制，AgentSession 自己管理默认值。
+`retry/compaction/maxSteps` 从 caller 可见接口中移除：它们是 harness 内部机制，AgentSession 自己管理默认值。
 
 #### B. subscribe(AgentEvent) → onMessage/onTodoUpdate/onEnd
 
-`session.subscribe(event: AgentEvent)` 暴露了 11 种事件类型给 feature 层——包括 compaction_start、auto_retry_start、queue_update、interrupted 等 harness 内部事件。feature 被迫过滤无关事件，且 AgentEvent 类型变更会直接影响 feature。
+`session.subscribe(event: AgentEvent)` 暴露了 11 种事件类型给 feature 层，包括 compaction_start、auto_retry_start、queue_update、interrupted 等 harness 内部事件。feature 被迫过滤无关事件，且 AgentEvent 类型变更会直接影响 feature。
 
 **决策**：feature 只注册它关心的回调。
 
@@ -329,9 +329,9 @@ session.onTodoUpdate(fn);    // todo_update
 session.onEnd(fn);           // agent_end
 ```
 
-compaction、retry、queue_update、interrupted、agent_start——全部留在 harness 内部。Caller 看不见。
+compaction、retry、queue_update、interrupted、agent_start 全部留在 harness 内部。Caller 看不见。
 
-#### C. buildAgentConfig 删除——feature 内联组装
+#### C. buildAgentConfig 删除：feature 内联组装
 
 `buildAgentConfig`（原名 `buildSessionSpec`）是 session-factory 模式的残留。它把 7 个参数打包成一个袋子返回 `{ model, tools, plugins, contextManager }`，但内部只用到 `agent.modelName` 一个字段，`agent.modelProvider` 零引用，`agent.modelBaseUrl` 被 config 覆盖。`agent` 和 `agentId` 重复（agentId 只用于算 cwd）。
 
@@ -354,7 +354,7 @@ const session = sessionManager.create({
 });
 ```
 
-Agent 实体不再出现在 session 创建路径上——feature 取 `agent.modelName` 后丢弃 AgentRow。
+Agent 实体不再出现在 session 创建路径上。feature 取 `agent.modelName` 后丢弃 AgentRow。
 
 #### D. 命名泄漏修正
 
@@ -364,7 +364,7 @@ Agent 实体不再出现在 session 创建路径上——feature 取 `agent.mode
 | `startSpan` 参数 `origin` | framework 接口暴露业务概念 | `opts` |
 | `PromptOptions.conversation` | 同上 | `PromptOptions.context` |
 
-#### E. Config 重建策略——不持久化
+#### E. Config 重建策略：不持久化
 
 session 恢复时 `sessionManager.open(sid, config)` 的 config 是**重新组装**的，不是持久化恢复的。持久化的只有 `sessionId`（存在各 feature 的领域表）。进程重启后从 agent 表 + backend config 重新组装 model/tools/plugins。Agent 配置变更时天然拿到最新配置，sessionId 不变、checkpointer 记忆连续。
 
@@ -392,7 +392,7 @@ const session = existingSid
 - backend: 新增 `SessionManager`（替代 `SessionFactory`）
 - backend: `member` 表加 `session_id` 字段
 - 删除 `deriveSessionId` / `parseSessionId` / `SessionSpec` / `executeAgentRun` / `span-executor.ts`
-- config 重建非持久化——sessionId 是持久句柄，model/tools/plugins 从 agent 表 + backend config 重新组装
+- config 重建非持久化：sessionId 是持久句柄，model/tools/plugins 从 agent 表 + backend config 重新组装
 - 进程重启后 conversation 记忆连续（checkpointer + 持久化 sessionId 绑定）
 +
 ## 关联

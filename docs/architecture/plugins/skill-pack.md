@@ -4,7 +4,7 @@ title: 技能包管理
 status: current
 owners: architecture
 last_verified_against_code: 2026-07-28
-summary: "技能包（Skill Pack）是一等领域实体——有来源、版本、安装生命周期。安装/同步由 builtin 技能 + 原子工具 + 临时 Agent 驱动，LLM 自主处理 git 冲突等 corner case。运行时 progressive-skill 经共享 fs adapter 消费分配好的 packs，builtin 恒在最前。"
+summary: "技能包（Skill Pack）是一等领域实体，有来源、版本、安装生命周期。安装/同步由 builtin 技能 + 原子工具 + 临时 Agent 驱动，LLM 自主处理 git 冲突等 corner case。运行时 progressive-skill 经共享 fs adapter 消费分配好的 packs，builtin 恒在最前。"
 depends_on:
   - plugins.progressive-skill
   - backend.data-model
@@ -14,7 +14,7 @@ used_by:
 
 # 技能包管理
 
-技能包是技能集合的**分发单元**——它有来源（git / zip / builtin）、版本、安装状态和完整生命周期。一个 pack 物化为一个磁盘目录，内含若干 `SKILL.md` 子目录。
+技能包是技能集合的**分发单元**，有来源（git / zip / builtin）、版本、安装状态和完整生命周期。一个 pack 物化为一个磁盘目录，内含若干 `SKILL.md` 子目录。
 
 领域词汇（详见 `CONTEXT.md`）：**Skill**（单个 SKILL.md）、**Skill Pack**（分发单元）、**Skill Root**（物化目录路径）。
 
@@ -47,7 +47,7 @@ agent_skill_pack (
 )
 ```
 
-`installPath` 不存表——由 `id + dataDir` 推导。`enabled` 列为 YAGNI（分配即启用，unassign 即移除）。
+`installPath` 不存表，由 `id + dataDir` 推导。`enabled` 列为 YAGNI（分配即启用，unassign 即移除）。
 
 ## 状态机
 
@@ -109,7 +109,7 @@ const skillRoots = port ? await buildSkillRoots(agentId, port, config.dataDir) :
 // run.skillRoots = skillRoots —— Run 创建时冻结；队列输入携带自己的快照
 ```
 
-无 port 注入时走原有 `progressiveSkillPlugin({ cwd })` 路径——向后兼容。分配变更只对**新建 Agent Run** 生效，活 Run 不热更。
+无 port 注入时走原有 `progressiveSkillPlugin({ cwd })` 路径，向后兼容。分配变更只对**新建 Agent Run** 生效，活 Run 不热更。
 
 ## Bootstrap
 
@@ -136,7 +136,7 @@ const skillRoots = port ? await buildSkillRoots(agentId, port, config.dataDir) :
 | 模块 | 职责 |
 |------|------|
 | `entities.ts` | `SkillPackRow` / 状态机 / `applyInstallTransition` / 路径推导 |
-| `fs-adapter.ts` | 全仓唯一 `nodeFsAdapter`——路径段校验代替 `startsWith` 前缀误判 |
+| `fs-adapter.ts` | 全仓唯一 `nodeFsAdapter`，路径段校验代替 `startsWith` 前缀误判 |
 | `registry.ts` | 模块级 singleton 存放 `SkillPackPort`，agent-run 创建路径无需依赖注入链 |
 | `install-session.ts` | `runInstall` / `runSync` 临时 Agent 编排 + 故障兜底 |
 | `tools.ts` | 6 个原子工具 + `validateExtractedEntries` |

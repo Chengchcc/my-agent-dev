@@ -4,7 +4,7 @@ title: 未来工作
 status: future
 owners: architecture
 last_verified_against_code: 2026-08-05
-summary: "这一页是唯一谈「还没做 / 想做」的地方——刻意和描述当前状态的所有页面隔离开，避免把「现状」和「设想」混在一起误导读者。其余每一页都只讲代码现在确实是怎样的；任何前瞻性的方向都收拢到这里，并标注它依赖哪些现有抽象。"
+summary: "这一页是唯一谈「还没做 / 想做」的地方，刻意和描述当前状态的所有页面隔离开，避免把「现状」和「设想」混在一起误导读者。其余每一页都只讲代码现在确实是怎样的；任何前瞻性的方向都收拢到这里，并标注它依赖哪些现有抽象。"
 depends_on:
   - runs.output-and-live-updates
   - surfaces.lark
@@ -15,9 +15,9 @@ used_by:
 ---
 
 # 未来工作
-> ⚠ **需复核(2026-08-13)**：本页部分条目已落地或已废弃（如 relationships 已删、记忆已吸收进工作区文件、多后端已实现）——每条以最新 ADR 索引为准。
+> ⚠ **需复核(2026-08-13)**：本页部分条目已落地或已废弃（如 relationships 已删、记忆已吸收进工作区文件、多后端已实现），每条以最新 ADR 索引为准。
 
-这一页是唯一谈「还没做 / 想做」的地方——刻意和描述当前状态的所有页面隔离开，避免把「现状」和「设想」混在一起误导读者。其余每一页都只讲代码现在确实是怎样的；任何前瞻性的方向都收拢到这里，并标注它依赖哪些现有抽象。
+这一页是唯一谈「还没做 / 想做」的地方，刻意和描述当前状态的所有页面隔离开，避免把「现状」和「设想」混在一起误导读者。其余每一页都只讲代码现在确实是怎样的；任何前瞻性的方向都收拢到这里，并标注它依赖哪些现有抽象。
 
 ## 为什么单独成页
 
@@ -96,7 +96,7 @@ used_by:
   | **P3** | Telemetry（OTel GenAI 语义约定） | ⏳ 待办 | 无当前 implementation；旧 runtime-observability 已删除。未来如做，按 child-process 链路（每次 Run 的 adapter 侧）重做，不引入常驻进程观测 | 1 周 |
   | **P3** | Tokenizer（精确 token 计数） | ✅ 已完成 | countTokens/countMessageTokens 工具函数 | 2026-07-21 |
 
-  OMP 的 dialect 系统（anthropic/deepseek/gemini/glm/kimi/qwen3 等 15+ 个 dialect 的 prompt 格式适配）不值得抄——我们的 API 层已有消息转换，且不需要 thinking 格式适配（不同模型的 reasoning 格式差异由 API 层处理）。
+  OMP 的 dialect 系统（anthropic/deepseek/gemini/glm/kimi/qwen3 等 15+ 个 dialect 的 prompt 格式适配）不值得抄，我们的 API 层已有消息转换，且不需要 thinking 格式适配（不同模型的 reasoning 格式差异由 API 层处理）。
 - **Autonomous Memory（自主记忆）（2026-07-22）**　**历史方案，已随 Phase 6 删除。** `plugin-fs-memory` / `plugin-memory` 包不存在；memory.autoExtract 等 settings 已从 UI 移除。当前没有 autonomous memory pipeline producer。Agent 详情页 Memory tab 仍存在，但只读取 workspace 中已有的文件（如 memory/facts、memory_summary.md），不做自动提取/合并。若恢复，必须作为 Oma 或 Product 侧的真实能力重做。
 
 

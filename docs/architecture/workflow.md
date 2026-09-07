@@ -34,7 +34,7 @@ triggers: { type: "cron", cron, enabled? }
 ## 执行引擎
 
 - `computeNext`（纯函数）：完成节点路由在完成时冻结进 `CompletionRecord.routedTo`，**永不重算**；join 语义 = any-of（AND 需显式 DSL marker）
-- `mergeInputs`：trigger → store → 全部完成输出按 completion order 合并（后者胜出），`nextNode` 输出字段是控制字段不并入数据
+- `mergeInputs`：trigger → store → 全部完成输出按 completion order 合并（晚完成的胜出），`nextNode` 输出字段是控制字段不并入数据
 - JSON-Logic 子集：`==`/`!=`（JSON 深比较）、`>`/`>=`/`<`/`<=`、`in`、`and`/`or`/`not`、`if`（严格三元）、`var`（点路径 + default）、`!!`
 
 ## 执行路径（backend `features/workflow`）

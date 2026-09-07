@@ -17,12 +17,12 @@ Product Backend 按 Run 调度一次性 child 进程，账本唯一、终态原�
 | 词 | 含义 | 不是 |
 |----|------|------|
 | **Conversation** | 一场 1:1 对话（人 + 唯一 agent，`conversation.agent_id` 绑定） | 不是 Run 容器，不是多方房间（member 概念已删） |
-| **Message** | 对话轮次（`@chengchenccc/message`） | 不是 LedgerEntry（后者是存储 wrapper） |
+| **Message** | 对话轮次（`@chengchenccc/message`） | 不是 LedgerEntry（存储 wrapper） |
 | **MessageRevision** | 消息的版本化 envelope（同 messageId 多次写入，state 从 streaming→done） | 不是独立消息 |
 | **ConversationEvent** | SSE wire 载荷（`{seq, kind, message?, payload?, undone?}`，服务端已 parse） | 不是 LedgerEntry（存储行不出 backend） |
 | **Ledger（conversation_ledger）** | 对话可见内容的 canonical fact store；final assistant Message 带 `agent_run_id` 提交标记 | 不是执行日志 |
 | **Agent Context** | 每个 conversation 的语义历史（tree/entry/branch；1:1 后 tree 单键） | 不是 child transcript |
-| **CLI Session** | CLI 后端(claude/pi/omp)的运行态会话真理：claude `session_id` / pi·omp 会话文件路径；分支经 `cliSessionRef` 引用 | 不是 Context Branch（后者可 fork/rollback；CLI session 不可回滚） |
+| **CLI Session** | CLI 后端(claude/pi/omp)的运行态会话真理：claude `session_id` / pi·omp 会话文件路径；分支经 `cliSessionRef` 引用 | 不是 Context Branch（可 fork/rollback；CLI session 不可回滚） |
 | **Agent Workspace** | 每个 agent 的可配置运行工作区(绝对路径)：`agent.yml` 唯一真源(identity + runtime_config + lark)、AGENTS.md/CLAUDE.md/SOUL.md/USER.md、knowledge/、`.<kind>/` 配置目录 | 不是 dataDir 里的固定物化目录 |
 | **Workspace Bridge** | 把 dataDir 单点资源(skill/knowledge/mcp)按 agent 分配**桥接**到 workspace 的幂等 reconcile（软链 skills、写 `.mcp.json`） | 不是每种资源一套拷贝逻辑 |
 | **Agent Run** | branch 上的持久产品执行；**唯一执行身份**（agent_run 表） | 不是 span/attempt/session（已删除） |
@@ -33,7 +33,7 @@ Product Backend 按 Run 调度一次性 child 进程，账本唯一、终态原�
 | **Workflow** | 声明式节点图 DSL（`@chengchenccc/workflow` 纯域层）：start/end/agent/script/human 节点 + 带条件的边 + cron 触发；文件态 `*.workflow.json` | 不是 Loop（已删）、不是 oma 脚本式 workflow executor |
 | **Workflow Execution** | 一次 workflow 运行的持久实例（execution/node_run/pending_human 三表；SSE live + replay；可 cancel） | 不是 Agent Run（agent 节点才创建 Agent Run） |
 | **Node Run** | 单节点一次执行的行（输出、路由 routedTo、错误、关联 runId） | 不是 LedgerEntry |
-| **Human Gate** | human 节点：execution 进 `waiting_human`，Web 渲染问卷表单，提交后续跑；取消即终态 | 不是 HITL Approval（后者是工具级） |
+| **Human Gate** | human 节点：execution 进 `waiting_human`，Web 渲染问卷表单，提交后续跑；取消即终态 | 不是 HITL Approval（工具级） |
 | **Artifact** | 带类型的产物（key-type 数组 schema 中的 `artifact` 类型；fs 存储 + MCP 工具 + REST；节点/run 依赖检查；聊天 @-mention 引用） | 不是聊天附件 |
 | **Sandbox** | `@chengchenccc/sandbox` 进程隔离执行：spawn bun 子进程、临时 cwd、最小 env、硬超时、JSON stdio 契约 | 不是 fs/network jail（容器级隔离明确非目标，ADR 0026 边界内接受） |
 | **HITL Approval** | 工具级审批链：child `approval_request` → adapter 透传 → backend SSE → Web Allow/Deny 卡片 → `POST /api/agent-runs/:runId/approval` → `resolve_approval` 命令；超时(`OMA_APPROVAL_TIMEOUT_MS`)fail-closed deny；auto 模式另走分类器审查（见②'） | 不是 Human Gate（节点级） |

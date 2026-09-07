@@ -20,18 +20,18 @@ Product Backend (apps/backend)
 
 **协议与契约（零运行时依赖）**
 
-- [`core`](./core/)：`ChatModel`、`Tool`、`AIMessageChunk`、`ContentBlock` 与 stream-utils（`collectStream` 等）。协议层，不含 run loop——唯一真实 loop 在 `agent`。
+- [`core`](./core/)：`ChatModel`、`Tool`、`AIMessageChunk`、`ContentBlock` 与 stream-utils（`collectStream` 等）。协议层，不含 run loop，唯一真实 loop 在 `agent`。
 - [`message`](./message/)：`Message` / `MessageRevision` 领域类型、zod 序列化、`assistantMessageId(runId, ordinal)` → `run:<runId>:assistant:<n>`。
-- [`conversation`](./conversation/)：多方会话领域模型——`LedgerEntry`/`LedgerKind` codec、成员、@mention 触发规则。
-- [`agent-backend`](./agent-backend/)：Agent Backend 执行契约——`BackendRunInput`/`BackendRunOutcome`/`BackendRunSegment`、核心事件、JSONL transport schema 与事件/outcome mapping（两侧共用同一份）。
+- [`conversation`](./conversation/)：多方会话领域模型，`LedgerEntry`/`LedgerKind` codec、成员、@mention 触发规则。
+- [`agent-backend`](./agent-backend/)：Agent Backend 执行契约，`BackendRunInput`/`BackendRunOutcome`/`BackendRunSegment`、核心事件、JSONL transport schema 与事件/outcome mapping（两侧共用同一份）。
 - [`api-contract`](./api-contract/)：Elysia `App` 类型真源（HTTP/SSE 契约）、`SSEEventMap`。
 - [`config`](./config/)：环境变量 schema 与解析。
 
 **Runtime 与执行链**
 
-- [`agent`](./agent/)：**Oma 唯一真实 Runtime**——`createOmaSession()`（model/tool loop、retry、compaction、插件、todo）、in-memory SessionStore、prompt/meta 构建。
-- [`adapter-oma-agent`](./adapter-oma-agent/)：`OmaBackend`——spawn child、stdin/stdout JSONL、steer/abort、并发上限、stderr 脱敏、child recycle。
-- [`ai`](./ai/)：Provider 注册制 + Model 元数据 + `createModelRuntime()` + `AnthropicChatModel`——全仓唯一直接 import 模型 SDK 的地方。
+- [`agent`](./agent/)：**Oma 唯一真实 Runtime**，`createOmaSession()`（model/tool loop、retry、compaction、插件、todo）、in-memory SessionStore、prompt/meta 构建。
+- [`adapter-oma-agent`](./adapter-oma-agent/)：`OmaBackend`，spawn child、stdin/stdout JSONL、steer/abort、并发上限、stderr 脱敏、child recycle。
+- [`ai`](./ai/)：Provider 注册制 + Model 元数据 + `createModelRuntime()` + `AnthropicChatModel`，全仓唯一直接 import 模型 SDK 的地方。
 
 **Oma 本地能力**
 
@@ -39,7 +39,7 @@ Product Backend (apps/backend)
 
 **工具与适配器**
 
-- [`tools-common`](./tools-common/)：标准工具实现——bash、文件读写编辑、grep、glob、网络、cwd 工具工厂。
+- [`tools-common`](./tools-common/)：标准工具实现，bash、文件读写编辑、grep、glob、网络、cwd 工具工厂。
 - [`adapter-mcp`](./adapter-mcp/)：MCP client 管理 + 工具适配（`mcp__{serverName}__{toolName}` 命名）。
 
 **测试**

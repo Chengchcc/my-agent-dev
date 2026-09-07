@@ -69,7 +69,7 @@ sequenceDiagram
 `sse-watcher` 用 `parseRevision` 解析账本 entry 的 content 为 `ConversationMessageRevision`。`state` 字段驱动出站行为：
 
 - `state === "streaming"`：run 仍在进行。sse-watcher 可将文本渐进渲染为 streaming 消息（更新同一 message），但不发最终文本。
-- `state === "done"`：terminal revision。到达时查 `canSkipFinalLedgerText`——首次必发一次最终文本（`completeFromLedger` 尚为 0），重连重放时可跳过。
+- `state === "done"`：terminal revision。到达时查 `canSkipFinalLedgerText`：首次必发一次最终文本（`completeFromLedger` 尚为 0），重连重放时可跳过。
 - `state === "error"`：run 失败。发错误文本。
 
 `streaming` 仅用于渐进渲染，`done`/`error` 触发最终投递。
@@ -90,11 +90,11 @@ export function canSkipFinalLedgerText(run: RunStreamRecord): boolean {
 
 runId 匹配在调用方 `sse-watcher.processEntry` 做：解析 revision 的 `runId`，按 runId 找 `run_stream` 记录，再判 `canSkipFinalLedgerText`。
 
-`completeFromLedger` 只在账本文本成功发出一次之后才置 1。首次投递时该标志为 0，跳不掉——terminal revision 到达时至少会发一次最终文本。跳过逻辑主要压制重连时的重放。
+`completeFromLedger` 只在账本文本成功发出一次之后才置 1。首次投递时该标志为 0，跳不掉，terminal revision 到达时至少会发一次最终文本。跳过逻辑主要压制重连时的重放。
 
 ## 内容渲染
 
-`render.ts` 从 `ConversationMessageRevision` 取 `text` 或 `blocks`——只抽 `type==="text"` 块（支持裸字符串、`{text}`、`{blocks}`、`ContentBlock[]`）。没有文本块（纯 tool_use/tool_result）时返回字面量 `"[Unsupported content]"`。工具活动在飞书里完全不可见。
+`render.ts` 从 `ConversationMessageRevision` 取 `text` 或 `blocks`，只抽 `type==="text"` 块（支持裸字符串、`{text}`、`{blocks}`、`ContentBlock[]`）。没有文本块（纯 tool_use/tool_result）时返回字面量 `"[Unsupported content]"`。工具活动在飞书里完全不可见。
 
 ## 失败模式
 

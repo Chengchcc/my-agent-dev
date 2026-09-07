@@ -1,4 +1,4 @@
-# ADR 0008: 塌缩 harness 调用层——删除 SessionSpec / SessionFactory / executeAgentRun
+# ADR 0008: 塌缩 harness 调用层：删除 SessionSpec / SessionFactory / executeAgentRun
 
 > ✅ **已实施(2026-08-13)**：SessionSpec/SessionFactory/executeAgentRun 已全部删除(Phase 5/6，packages/harness 退役，apps/oh-my-agent 以 createOmaRuntime 单入口取代)。本文档从提案转为实施记录。
 
@@ -24,7 +24,7 @@ executeAgentRun()        ← 顶层：DB 追踪 + 构建 config + 跑 agent
 3. **`buildSessionSpec` 尝试统一 config**，但 loop 和 install 的工具/插件完全不同，走不进来。
 4. **`executeAgentRun` 绑定正交职责**：DB 追踪和跑 agent 绑在一个函数里。
 5. **`sessionId` 被领域语义渗透**：conversation 把 `conversationId:memberId` 编码进 sessionId，再用 `parseSessionId()` 拆回来。底层概念不应该知道上层的领域对象。
-6. **四个 feature 做同样的事**——构建 config → 创建 AgentSession → prompt() → dispose()——但用了四种不同路径。
+6. **四个 feature 做同样的事**：构建 config → 创建 AgentSession → prompt() → dispose()——但用了四种不同路径。
 
 ## 决策
 
@@ -98,7 +98,7 @@ loop:          ULID sessionId × 2 → new AgentSession(sid) → prompt() → di
 ## 后果
 
 + 删除 ~600 行间接层代码（session-factory.ts + span-executor.ts + 相关类型）
-+ `parseSessionId()` / `deriveSessionId()` 删除——跨层映射存 DB，不编码在 ID 里
++ `parseSessionId()` / `deriveSessionId()` 删除：跨层映射存 DB，不编码在 ID 里
 + `traceId` 列从 `span_origin` 表删除（空占位，OTel 后需要时再加）
 + tracePlugin 让"追踪"显式可选：不在 plugins 数组里就不追踪
 + resume 极简：`spanId → DB 查 sessionId → live session → session.resume(cmd)`

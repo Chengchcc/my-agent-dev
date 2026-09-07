@@ -6,7 +6,7 @@
 
 Implemented(was Proposed)
 
-> 🔄 部分演进（2026-09-03）：Team 子树——`/team` 现为 Team overview（agent 卡片网格
+> 🔄 部分演进（2026-09-03）：Team 子树：`/team` 现为 Team overview（agent 卡片网格
 > + needs attention），agent 详情移至 `/team/[agentId]`，`/team/agents` 前缀退役
 > （`next.config` 重定向）。本文「agent id 撞名静态段的路由劫持」前提经核实不成立：
 > HTTP create 不接受客户端 id，agent id 只能是 ULID 或 bootstrap 常量（`"default"`），
@@ -34,7 +34,7 @@ Web 控制台（`apps/web`）的信息架构是**按后端模块生长出来的*
 
 ### URL 与语义脱节、深链孤岛、复制粘贴残留
 
-- `NavRail` 里 **`Loops` 条目重复渲染两次**（`NavRail.tsx:289-301` 与 `:302-313`，后者无 tooltip、`isActive` 误判），是明显的复制粘贴 bug。
+- `NavRail` 里 **`Loops` 条目重复渲染两次**（`NavRail.tsx:289-301` 与 `:302-313`，其中 `:302-313` 无 tooltip、`isActive` 误判），是明显的复制粘贴 bug。
 - `/ops/agents`、`/ops/sessions`、`/ops/surfaces`（及各自 `[id]` 详情）在侧边栏**无任何入口**，只能靠组件内链接进入，是深链孤岛。
 - 路由名与 UI 标签不一致：`/cron` 叫 "Schedules"，`/ops` 叫 "Observability"。
 - cron 卡片、loop 的 "Run History" 都跳 `/conversations/{cronJobId 或 loopId}`，把非 conversationId 当 conversationId 用，语义混淆。

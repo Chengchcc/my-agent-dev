@@ -93,7 +93,7 @@ Surface 渲染 Message。
 RunEvent 进入执行事实流，再由 Projection 写 LedgerEntry，再由 watcher 解释 content JSON。
 ```
 
-后者可以存在于底层实现说明，但不应该成为所有功能开发者必须理解的入口。
+这套机制链路可以存在于底层实现说明，但不应该成为所有功能开发者必须理解的入口。
 
 ### 边界要硬，概念要少
 
