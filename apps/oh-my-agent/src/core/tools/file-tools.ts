@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { extname, resolve } from "node:path";
+import { extname, relative, resolve, sep } from "node:path";
 import type { Tool } from "@chengchenccc/message";
 import { WorkspaceSandbox } from "./workspace-sandbox.js";
 
@@ -31,6 +31,24 @@ function safePathNew(cwd: string, userPath: string): string | null {
   } catch {
     return null;
   }
+}
+
+/** Product-managed config files the agent must never write (H1): a tampered
+ *  `.mcp.json` mounts arbitrary stdio servers on every future run (zero
+ *  approval — mount is not a tool call) and can exfiltrate the live
+ *  product-tools bearer via ${PRODUCT_TOOLS_RUN_TOKEN}. The backend bridge
+ *  is the only author; these paths are read-only for the model. */
+const PROTECTED_FILES: Record<string, true> = {
+  ".mcp.json": true,
+  "mcp.json": true,
+  ".oma/product-tools.json": true,
+  ".oma/settings.json": true,
+  ".claude/settings.json": true,
+};
+
+function isProtectedPath(cwd: string, full: string): boolean {
+  const rel = relative(cwd, full).split(sep).join("/");
+  return PROTECTED_FILES[rel] === true;
 }
 /** Resolve a path against a fixed workspace root using realpath containment. */
 export function resolveWorkspacePath(root: string, userPath: string): string | null {
@@ -166,6 +184,12 @@ export function createWriteTool(opts: { cwd: string }): Tool {
       const rec = input as InputRec;
       const full = safePathNew(cwd, String(rec.path ?? ""));
       if (!full) return { content: "Error: path escapes workspace", isError: true };
+      if (isProtectedPath(cwd, full)) {
+        return {
+          content: `Error: ${rec.path} is product-managed and read-only for the agent`,
+          isError: true,
+        };
+      }
       try {
         mkdirSync(resolve(full, ".."), { recursive: true });
         const content = String(rec.content ?? "");
@@ -218,6 +242,12 @@ export function createEditTool(opts: { cwd: string }): Tool {
       const rec = input as InputRec;
       const full = safePath(cwd, String(rec.path ?? ""));
       if (!full) return { content: "Error: path escapes workspace", isError: true };
+      if (isProtectedPath(cwd, full)) {
+        return {
+          content: `Error: ${rec.path} is product-managed and read-only for the agent`,
+          isError: true,
+        };
+      }
       try {
         if (!existsSync(full)) {
           return { content: `Error: file not found: ${rec.path}`, isError: true };
