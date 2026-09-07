@@ -7,6 +7,18 @@ import { createServer } from "./server.js";
 // ─── Bootstrap ─────────────────────────────────────────────────
 
 const config = loadConfig();
+if (
+  config.host !== "127.0.0.1" &&
+  config.host !== "localhost" &&
+  config.host !== "::1" &&
+  config.authToken === "dev-token"
+) {
+  console.warn(
+    `[security] BACKEND_HOST is non-loopback (${config.host}) while BACKEND_AUTH_TOKEN is the` +
+      ` documented default "dev-token" (M16). Generate a random token before exposing` +
+      ` this backend to any network.`,
+  );
+}
 const services = createBackendServices(config);
 const installed = await installFeatures(services);
 
