@@ -22,7 +22,7 @@ import {
 } from "../agent-runtime.js";
 import type { PluginMcpConfig } from "../plugins/plugin-resolve.js";
 import { isFileTrusted, readTrustedPlugins } from "../plugins/plugin-trust.js";
-import { loadProjectSettings } from "../settings/project-settings.js";
+import { loadProjectSettings, type ProjectSettings } from "../settings/project-settings.js";
 import { createAskQuestionTool } from "../tools/ask-question.js";
 import { type BashSandbox, resolveBashSandbox } from "../tools/bash-sandbox.js";
 import {
@@ -229,7 +229,14 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   // the compatibility shim: the existing env-reading code paths pick them up
   // without threading a settings object through every consumer.
   // ponytail: per-process shim; a future refactor can pass settings as a dep.
-  const projectSettings = loadProjectSettings(deps.workspaceRoot);
+  // M9: the file lives in the agent-writable workspace. Standalone modes
+  // (tui/print/json) honor every knob; backend RPC runs honor ONLY
+  // bashSandbox (enabling it = stricter, fail-safe) — a workspace file must
+  // never steer the product's permission classifier, web, steps or timeouts.
+  const loaded = loadProjectSettings(deps.workspaceRoot);
+  const projectSettings: ProjectSettings = deps.gateWorkspaceMcp
+    ? loaded
+    : { bashSandbox: loaded.bashSandbox };
   if (projectSettings.maxSteps !== undefined)
     process.env.OMA_MAX_STEPS = String(projectSettings.maxSteps);
   if (projectSettings.modelTimeoutMs !== undefined) {
