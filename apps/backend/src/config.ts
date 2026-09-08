@@ -46,14 +46,21 @@ export interface BackendConfig {
  * Computed defaults (like dataDir relative to this file) are applied here.
  */
 export function loadConfig(env: Env = parseEnv(process.env)): BackendConfig {
-  const dataDir = env.BACKEND_DATA_DIR ?? `${import.meta.dir}/../.backend-data`;
+  // Relative BACKEND_DATA_DIR (e.g. ./.backend-data) resolves against the
+  // process cwd. Absolute everywhere: the workspace bridge writes symlink
+  // targets from these paths, and a relative source resolves against the
+  // LINK'S directory — producing dead links in agent workspaces.
+  const dataDir = resolve(
+    process.cwd(),
+    env.BACKEND_DATA_DIR ?? `${import.meta.dir}/../.backend-data`,
+  );
 
   return {
     port: env.BACKEND_PORT,
     host: env.BACKEND_HOST,
     dataDir,
-    workspaceRoot: env.BACKEND_WORKSPACE_ROOT ?? `${dataDir}/workspaces`,
-    templateDir: env.BACKEND_TEMPLATE_DIR ?? `${dataDir}/templates`,
+    workspaceRoot: resolve(process.cwd(), env.BACKEND_WORKSPACE_ROOT ?? `${dataDir}/workspaces`),
+    templateDir: resolve(process.cwd(), env.BACKEND_TEMPLATE_DIR ?? `${dataDir}/templates`),
     authToken: env.BACKEND_AUTH_TOKEN,
     maxConcurrentRuns: env.BACKEND_MAX_CONCURRENT,
     cancelGraceMs: env.BACKEND_CANCEL_GRACE_MS,
