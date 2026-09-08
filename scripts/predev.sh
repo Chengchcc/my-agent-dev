@@ -89,9 +89,24 @@ if [ -f "$BACKEND_ENV" ]; then
     echo "==> Mirrored BACKEND_AUTH_TOKEN into apps/web/.env"
   fi
 fi
-
 if [ -f "$WEB_ENV" ]; then
   regen_secret "$WEB_ENV" "SESSION_SECRET" ""
   regen_secret "$WEB_ENV" "MOCK_PASSWORD" "admin"
   chmod 600 "$WEB_ENV"
+fi
+
+# ── 4. Self-hosted Monaco assets (gitignored, regenerated per machine) ──
+# The workflow DSL editor and the read-only file viewers load Monaco from
+# /monaco/vs — a CDN mirror hangs on unreachable networks.
+MONACO_VS="$ROOT/apps/web/public/monaco/vs"
+if [ ! -f "$MONACO_VS/loader.js" ]; then
+  MONACO_SRC="$ROOT/node_modules/monaco-editor/min/vs"
+  [ -f "$MONACO_SRC/loader.js" ] || MONACO_SRC="$ROOT/apps/web/node_modules/monaco-editor/min/vs"
+  if [ ! -f "$MONACO_SRC/loader.js" ]; then
+    echo "ERROR: monaco-editor is not installed; run bun install first." >&2
+    exit 1
+  fi
+  mkdir -p "$ROOT/apps/web/public/monaco"
+  cp -r "$MONACO_SRC" "$MONACO_VS"
+  echo "==> Copied Monaco assets to apps/web/public/monaco/vs"
 fi

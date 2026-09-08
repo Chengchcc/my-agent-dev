@@ -39,7 +39,7 @@
     "clsx": "^2.1.1",
     "elysia": "^1.0.0",
     "lucide-react": "^1.17.0",
-    "monaco-editor": "^0.52.0",
+    "monaco-editor": "0.52.2",
     "next": "^15.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

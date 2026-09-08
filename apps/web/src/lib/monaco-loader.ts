@@ -2,9 +2,11 @@
 
 import { loader } from "@monaco-editor/react";
 
-// Load Monaco from CDN (avoid bundling 98MB of assets). To point at a local
-// /monaco/vs mirror, change the path below.
-const vs = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs";
+// Monaco is self-hosted: predev.sh copies node_modules/monaco-editor/min/vs
+// to apps/web/public/monaco/vs (gitignored, regenerated per machine). The
+// old jsdelivr CDN path made Source/code views hang forever on networks
+// where the CDN is unreachable.
+const vs = "/monaco/vs";
 
 loader.config({
   paths: { vs },
