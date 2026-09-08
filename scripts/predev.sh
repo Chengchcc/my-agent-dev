@@ -33,6 +33,7 @@ fi
 
 # ── 2. .env files from .env.example ──
 BACKEND_ENV="$ROOT/apps/backend/.env"
+WEB_ENV="$ROOT/apps/web/.env"
 if [ ! -f "$BACKEND_ENV" ]; then
   echo "==> Creating apps/backend/.env from .env.example"
   cp "$ROOT/apps/backend/.env.example" "$BACKEND_ENV"
@@ -71,16 +72,26 @@ regen_secret() {
   echo "==> Generated $key in $file"
 }
 
+# BACKEND_AUTH_TOKEN is shared by backend + web BFF: generate it ONCE (in
+# the backend env) and mirror the SAME value into web/.env — regenerating
+# per file would desync the pair and the BFF would 401.
 if [ -f "$BACKEND_ENV" ]; then
   regen_secret "$BACKEND_ENV" "BACKEND_AUTH_TOKEN" "dev-token"
+  if [ -f "$WEB_ENV" ]; then
+    token="$(grep -E '^BACKEND_AUTH_TOKEN=' "$BACKEND_ENV" | head -n1 | sed -E 's/^BACKEND_AUTH_TOKEN=//; s/[[:space:]]*#.*$//; s/[[:space:]]*$//')"
+    if grep -qE '^BACKEND_AUTH_TOKEN=' "$WEB_ENV"; then
+      tmp="$(mktemp)"
+      sed -E "s|^BACKEND_AUTH_TOKEN=.*$|BACKEND_AUTH_TOKEN=${token}|" "$WEB_ENV" >"$tmp"
+      mv "$tmp" "$WEB_ENV"
+    else
+      printf 'BACKEND_AUTH_TOKEN=%s\n' "$token" >>"$WEB_ENV"
+    fi
+    echo "==> Mirrored BACKEND_AUTH_TOKEN into apps/web/.env"
+  fi
 fi
 
 if [ -f "$WEB_ENV" ]; then
   regen_secret "$WEB_ENV" "SESSION_SECRET" ""
   regen_secret "$WEB_ENV" "MOCK_PASSWORD" "admin"
   chmod 600 "$WEB_ENV"
-fi
-
-if [ -f "$BACKEND_ENV" ]; then
-  chmod 600 "$BACKEND_ENV"
 fi
