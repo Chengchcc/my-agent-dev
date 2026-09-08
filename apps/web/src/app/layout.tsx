@@ -23,7 +23,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Observatory — Agent Workspace",
+  title: "Agent OS — Agent Workspace",
   description: "Multi-agent collaboration workspace",
 };
 

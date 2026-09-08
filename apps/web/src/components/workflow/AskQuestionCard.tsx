@@ -24,7 +24,7 @@ function buildItems(input: AskQuestionInput): Items {
   });
 }
 
-/** AskQuestionCard — Observatory-styled HITL question form. Shared by the
+/** AskQuestionCard — Agent OS-styled HITL question form. Shared by the
  *  workflow human gate node and the product-tools MCP ask surface, so both
  *  read the same design language (panel card, mono micro-label, label-caps
  *  question index, pill options, primary Submit). */

@@ -7,7 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { readSession } from "@/lib/session";
 
 export const metadata: Metadata = {
-  title: "Observatory — Agent Workspace",
+  title: "Agent OS — Agent Workspace",
   description: "Multi-agent collaboration workspace",
 };
 

@@ -75,7 +75,7 @@ function LoginForm() {
 
       <div className="w-full max-w-sm px-8 animate-fade-in">
         <p className="text-xs tracking-kicker uppercase text-(--mute) mb-8 font-sans font-semibold">
-          Observatory
+          Agent OS
         </p>
 
         <h1 className="text-3xl/tight font-normal text-(--ink-strong) mb-2 font-sans">

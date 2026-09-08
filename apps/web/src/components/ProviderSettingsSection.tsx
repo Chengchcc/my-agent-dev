@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useClearProvider, useProviders, useSetProvider } from "@/features/providers/hooks";
 
-/** Provider key management in the Observatory card language: a list of provider
+/** Provider key management in the Agent OS card language: a list of provider
  *  rows with a configured status pill and an inline Set/Update form. */
 export function ProviderSettingsSection() {
   const { data, isLoading } = useProviders();
