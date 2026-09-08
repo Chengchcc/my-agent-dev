@@ -103,6 +103,10 @@ export function agentRoutes(
   projectExists?: (id: string) => boolean,
   /** Emits a "changed" event on agent-config writes (SSE live refresh). */
   configEvents?: AgentConfigEventBus,
+  /** UX: additional realpath prefixes the workspace file read may resolve
+   *  into (e.g. dataDir — skill/knowledge pack symlinks point there).
+   *  Read-only; targets outside every root stay a 403. */
+  extraReadRoots?: readonly string[],
 ) {
   const statusOf = (row: AgentRow) => deriveLarkStatus(row, larkStatusOf?.(row.id));
 
@@ -370,15 +374,28 @@ export function agentRoutes(
         const target = resolveInWorkspace(realRoot, rel);
         if (target === null)
           return Response.json({ error: "path escapes workspace" }, { status: 403 });
-        if (!existsSync(target) || !statSync(target).isDirectory()) {
-          return Response.json({ error: "not a directory" }, { status: 400 });
-        }
         const entries = readdirSync(target, { withFileTypes: true })
-          .map((d) => ({
-            name: d.name,
-            kind: d.isDirectory() ? "dir" : d.isSymbolicLink() ? "symlink" : "file",
-            size: d.isFile() ? statSync(pathJoin(target, d.name)).size : null,
-          }))
+          .map((d) => {
+            // A symlink to a directory (skill/knowledge pack links) must
+            // present as "dir" so the tree expands it; stat() follows.
+            let kind: "dir" | "file" | "symlink" = d.isSymbolicLink()
+              ? "symlink"
+              : d.isDirectory()
+                ? "dir"
+                : "file";
+            try {
+              if (d.isSymbolicLink()) {
+                kind = statSync(pathJoin(target, d.name)).isDirectory() ? "dir" : "file";
+              }
+            } catch {
+              /* broken link: keep "symlink" */
+            }
+            return {
+              name: d.name,
+              kind,
+              size: kind === "file" && d.isFile() ? statSync(pathJoin(target, d.name)).size : null,
+            };
+          })
           .sort((a, b) =>
             a.kind === b.kind
               ? a.name.localeCompare(b.name)
@@ -413,9 +430,19 @@ export function agentRoutes(
         if (target === null)
           return Response.json({ error: "path escapes workspace" }, { status: 403 });
         // realpath: a symlink inside the workspace must not smuggle reads
-        // outside it (the bridge links pack dirs; those stay inside).
+        // outside it — EXCEPT into the operator-configured extra roots
+        // (dataDir): the bridge links skill/knowledge packs there, and the
+        // read-only file view mirrors what the agent itself reads.
         const real = realpathSyncSafe(target);
-        if (real === null || real === realRoot || !real.startsWith(`${realRoot}${sep}`)) {
+        if (real === null) {
+          return Response.json({ error: "path escapes workspace" }, { status: 403 });
+        }
+        const allowedRoots = [
+          realRoot,
+          ...(extraReadRoots ?? []).map((r) => realpathSyncSafe(r)),
+        ].filter((r): r is string => r !== null);
+        const contained = allowedRoots.some((r) => real === r || real.startsWith(`${r}${sep}`));
+        if (!contained || real === realRoot) {
           return Response.json({ error: "path escapes workspace" }, { status: 403 });
         }
         if (!existsSync(real) || !statSync(real).isFile()) {

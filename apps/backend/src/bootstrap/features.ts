@@ -1033,6 +1033,9 @@ export async function installFeatures(services: BackendServices): Promise<Instal
       getSetupManager,
       (id: string) => projectSvc.exists(id),
       agentConfigEvents,
+      // Skill/knowledge pack symlinks resolve into the data dir; the
+      // read-only workspace file view is allowed to follow them there.
+      [config.dataDir],
     ),
     conversations: conversationRoutes(conv.convSvc, ulid, (id: string) => projectSvc.exists(id)),
     ops: opsRoutes(opsSvc),
