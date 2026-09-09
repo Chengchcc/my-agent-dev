@@ -170,6 +170,37 @@ function killDescendants(pid: number, signal: "SIGTERM" | "SIGKILL"): void {
   }
 }
 
+/** Compose the spawn argv for one sandboxed process: platform wrapper
+ *  (setsid/bwrap/sandbox-exec) around the base command. Shared by the
+ *  one-shot runner and persistent sessions. */
+export function buildWrappedArgv(
+  baseArgv: readonly string[],
+  isolation: SandboxInput["isolation"] | undefined,
+  dir: string,
+): string[] {
+  const hasSetsid = Bun.which("setsid") !== null;
+  const wantsNetworkCut = isolation?.noNetwork === true;
+  const wantsDenyRead = (isolation?.denyReadDirs?.length ?? 0) > 0;
+  const isolationRequested = wantsNetworkCut || wantsDenyRead;
+  const onLinux = process.platform === "linux";
+  const onMacos = process.platform === "darwin";
+  const hasBwrap = Bun.which("bwrap") !== null;
+  const hasSandboxExec = Bun.which("sandbox-exec") !== null;
+  let argv = [...baseArgv];
+  if (isolationRequested) {
+    if (onLinux && hasBwrap) {
+      argv = bwrapArgv(argv, isolation, dirname(process.execPath));
+    } else if (onMacos && hasSandboxExec) {
+      argv = sandboxExecArgv(argv, dir, isolation);
+    } else {
+      console.warn(
+        "[sandbox] isolation requested but no bwrap/sandbox-exec available — running with process isolation only",
+      );
+    }
+  }
+  return hasSetsid ? ["setsid", ...argv] : argv;
+}
+
 export async function runInSandbox(input: SandboxInput): Promise<SandboxResult> {
   const timeoutMs = input.timeoutMs ?? 30_000;
   const dir = input.cwd ?? mkTempDir();
@@ -212,34 +243,11 @@ export async function runInSandbox(input: SandboxInput): Promise<SandboxResult> 
       ? `${buf.slice(0, MAX_STREAM_BYTES)}\n[sandbox: output truncated at ${MAX_STREAM_BYTES} bytes]`
       : buf;
   }
-  // Own process group: the timeout must reap grandchildren too, and a
-  // script that traps SIGTERM needs a SIGKILL escalation (a lone
-  // proc.kill() SIGTERM left executions stuck in "running" forever).
-  const hasSetsid = Bun.which("setsid") !== null;
-  // H2: wrap the script process when isolation is requested and a wrapper
-  // tool exists for the platform; otherwise fall back to process isolation
-  // only, with a warning naming the ceiling.
-  const isolation = input.isolation;
-  const wantsNetworkCut = isolation?.noNetwork === true;
-  const wantsDenyRead = (isolation?.denyReadDirs?.length ?? 0) > 0;
-  const isolationRequested = wantsNetworkCut || wantsDenyRead;
-  const onLinux = process.platform === "linux";
-  const onMacos = process.platform === "darwin";
-  const hasBwrap = Bun.which("bwrap") !== null;
-  const hasSandboxExec = Bun.which("sandbox-exec") !== null;
-  let baseArgv = ["bun", "run", join(dir, "__sandbox_main.ts")];
-  if (isolationRequested) {
-    if (onLinux && hasBwrap) {
-      baseArgv = bwrapArgv(baseArgv, isolation, dirname(process.execPath));
-    } else if (onMacos && hasSandboxExec) {
-      baseArgv = sandboxExecArgv(baseArgv, dir, isolation);
-    } else {
-      console.warn(
-        "[sandbox] isolation requested but no bwrap/sandbox-exec available — running with process isolation only",
-      );
-    }
-  }
-  const argv = hasSetsid ? ["setsid", ...baseArgv] : baseArgv;
+  const argv = buildWrappedArgv(
+    ["bun", "run", join(dir, "__sandbox_main.ts")],
+    input.isolation,
+    dir,
+  );
   const proc = Bun.spawn(argv, {
     cwd: dir,
     env: { ...BASE_ENV, ...(input.env ?? {}) },
@@ -310,6 +318,6 @@ export class SandboxTimeoutError extends Error {
 function mkTempDir(): string {
   return resolve(
     tmpdir(),
-    `sandbox-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    "sandbox-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8),
   );
 }

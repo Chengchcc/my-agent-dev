@@ -39,7 +39,7 @@ export function createEvalTool(_opts: { workspaceRoot: string }): Tool {
         },
         timeout: {
           type: "number",
-          description: "Timeout in milliseconds (default 30000)",
+          description: "Timeout in milliseconds (default 30000). 0 disables the deadline.",
         },
         keepWorkspace: {
           type: "boolean",
@@ -48,7 +48,7 @@ export function createEvalTool(_opts: { workspaceRoot: string }): Tool {
       },
       required: ["description", "code"],
     },
-    async execute(input: Record<string, unknown>, signal?: AbortSignal) {
+    async execute(input: Record<string, unknown>, _signal?: AbortSignal) {
       const {
         code,
         input: ctxInput,
@@ -63,10 +63,12 @@ export function createEvalTool(_opts: { workspaceRoot: string }): Tool {
       if (typeof code !== "string" || code.trim() === "") {
         return { content: "eval requires non-empty code", isError: true };
       }
-      if (signal?.aborted) return { content: "aborted", isError: true };
-      // Model-controlled timeout gets a ceiling, aligned with bash's clamp —
-      // an unbounded timeout (1e9) parks a sandbox slot indefinitely.
-      const clampedTimeout = Math.min(Math.max(Number(timeout) || 30_000, 1_000), 600_000);
+      // pi semantics: timeout 0 disables the deadline entirely (long
+      // parses/compiles). Otherwise model-controlled values stay clamped —
+      // an unbounded timeout parks a sandbox slot indefinitely.
+      const requested = Number(timeout);
+      const clampedTimeout =
+        requested === 0 ? 0 : Math.min(Math.max(requested || 30_000, 1_000), 600_000);
       try {
         const r = await runInSandbox({
           code,
