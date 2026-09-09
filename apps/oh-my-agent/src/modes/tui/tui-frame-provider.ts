@@ -3,19 +3,16 @@ import type { OmaTranscriptContainer } from "./tui-components.js";
 import type { TuiRenderShell } from "./tui-render.js";
 
 export interface OmaFrameProviderOptions {
-  headerContainer: Container;
   transcript: OmaTranscriptContainer;
   statusContainer: Container;
   editor: Editor;
   shell: TuiRenderShell;
 }
 
-/** Composes the bounded mutable viewport (header + live transcript tail +
- *  status/editor) and offers incremental transcript history for native
- *  scrollback. Header is rendered as live chrome; when the transcript fills
- *  the available rows, settled prefix commits via `history`. */
+/** Composes the bounded mutable viewport (live transcript tail + status/
+ *  editor). The header prints INTO the transcript once per session
+ *  (cc-style) and scrolls away with content — it is not live chrome. */
 export function createOmaFrameProvider({
-  headerContainer,
   transcript,
   statusContainer,
   editor,
@@ -24,15 +21,13 @@ export function createOmaFrameProvider({
   return {
     renderFrame({ columns, rows }) {
       const width = columns;
-      const before = headerContainer.render(width);
       const after = [...statusContainer.render(width), ...editor.render(width)];
-      const available = Math.max(0, rows - before.length - after.length);
+      const available = Math.max(0, rows - after.length);
       const target = Math.max(0, shell.lastTotalRows - available);
       const boundary = Math.min(shell.lastLiveStartRow, target);
       transcript.setNativeScrollbackCommittedRows(boundary);
       const active = available > 0 ? transcript.renderViewport(width, available) : [];
-      const composed = [...before, ...active, ...after];
-      const viewport = composed.length <= rows ? composed : composed.slice(-rows);
+      const viewport = [...active, ...after];
       const history = transcript.renderOfferedHistory(width);
       return { viewport, history };
     },

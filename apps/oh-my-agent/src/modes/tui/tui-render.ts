@@ -260,10 +260,13 @@ export class TuiRenderShell {
   private readonly reconciler: TuiTranscriptReconciler;
   lastLiveStartRow = 0;
   lastTotalRows = 0;
+  /** Session id the header block was last printed for (cc-style: the
+   *  banner scrolls away with the transcript and re-prints per session). */
+  private lastPrintedSession: string | null = null;
+  private welcomeTipShown = false;
 
   constructor(
     private readonly tui: TUI,
-    private readonly headerContainer: Container,
     private readonly transcript: OmaTranscriptContainer,
     private readonly statusContainer: Container,
     private readonly workspaceRoot: string,
@@ -271,19 +274,6 @@ export class TuiRenderShell {
   ) {
     this.itemRenderer = new TuiItemRenderer(tui);
     this.reconciler = new TuiTranscriptReconciler();
-  }
-
-  setHeader(model: string, session: string, title: string, context?: string): void {
-    this.headerModel = model;
-    this.headerSession = session;
-    this.headerTitle = title;
-    if (context !== undefined) this.headerContext = context;
-    this.renderHeader();
-    if (!this.busy) {
-      this.statusContainer.clear();
-      this.renderIdleFooter();
-    }
-    this.tui.requestRender();
   }
 
   setBusy(busy: boolean, loader: Loader | null, busySeconds: number): void {
@@ -300,8 +290,27 @@ export class TuiRenderShell {
     this.currentState = state;
   }
 
+  setHeader(model: string, session: string, title: string, context?: string): void {
+    this.headerModel = model;
+    this.headerSession = session;
+    this.headerTitle = title;
+    if (context !== undefined) this.headerContext = context;
+    this.renderHeader();
+    if (!this.busy) {
+      this.statusContainer.clear();
+      this.renderIdleFooter();
+    }
+    this.tui.requestRender();
+  }
+
+  /** Print the header INTO the transcript: it scrolls away with content
+   *  (cc-style) instead of pinning as live chrome. Re-prints only when the
+   *  session identity changes — model/context stay visible in the status
+   *  bar. */
   renderHeader(): void {
-    this.headerContainer.clear();
+    if (this.lastPrintedSession !== null && this.headerSession === this.lastPrintedSession) {
+      return;
+    }
     const banner = [
       "\u001b[36m  ██████╗ ███╗   ███╗ █████╗ \u001b[0m",
       "\u001b[36m ██╔═══██╗████╗ ████║██╔══██╗\u001b[0m",
@@ -325,6 +334,10 @@ export class TuiRenderShell {
     if (this.headerSession)
       infoLines.push(`\u001b[2m  session:\u001b[0m ${this.headerSession.slice(0, 8)}`);
     if (this.headerContext) infoLines.push(`\u001b[2m  context:\u001b[0m ${this.headerContext}`);
+    if (!this.welcomeTipShown && this.welcomeTip) {
+      infoLines.push(`\u001b[33m  ${this.welcomeTip}\u001b[0m`);
+      this.welcomeTipShown = true;
+    }
 
     const combined: string[] = [];
     const rows = Math.max(banner.length, infoLines.length);
@@ -341,12 +354,10 @@ export class TuiRenderShell {
         border: { color: (s: string) => `\u001b[2m${s}\u001b[0m` },
       },
     );
-    const infoLinesRendered = headerCard.render(this.tui.terminal.columns);
-    for (const line of infoLinesRendered) {
-      this.headerContainer.addChild(
-        new Text(truncateToWidth(line, this.tui.terminal.columns), 0, 0),
-      );
+    for (const line of headerCard.render(this.tui.terminal.columns)) {
+      this.transcript.addChild(new Text(truncateToWidth(line, this.tui.terminal.columns), 0, 0));
     }
+    this.lastPrintedSession = this.headerSession;
   }
 
   currentActivitySummary(): string | undefined {

@@ -147,18 +147,10 @@ export function createTerminalIo(
   workspaceRoot: string = process.cwd(),
 ): TuiIo {
   const tui = new TUI(terminal);
-  const headerContainer = new Container();
   const transcript = new OmaTranscriptContainer();
   const statusContainer = new Container();
   const welcomeTip = WELCOME_TIPS[Math.floor(Math.random() * WELCOME_TIPS.length)] ?? "";
-  const shell = new TuiRenderShell(
-    tui,
-    headerContainer,
-    transcript,
-    statusContainer,
-    workspaceRoot,
-    welcomeTip,
-  );
+  const shell = new TuiRenderShell(tui, transcript, statusContainer, workspaceRoot, welcomeTip);
   const editorTheme: EditorTheme = {
     ...EDITOR_THEME,
     topBorder: (width: number): string => {
@@ -407,14 +399,12 @@ export function createTerminalIo(
 
   tui.setFrameProvider(
     createOmaFrameProvider({
-      headerContainer,
       transcript,
       statusContainer,
       editor,
       shell,
     }),
   );
-  tui.addChild(headerContainer);
   tui.addChild(transcript);
   tui.addChild(statusContainer);
   tui.addChild(editor);
