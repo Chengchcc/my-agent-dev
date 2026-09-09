@@ -28,17 +28,36 @@ interface EvalJob {
   promise: Promise<void>;
 }
 
+// Module-scope registry (see bash.ts): session-wide for the TUI,
+// per-process for the backend.
+interface EvalJob {
+  id: string;
+  code: string;
+  startedAt: number;
+  finishedAt: number | null;
+  content: string;
+  isError: boolean;
+  killed: boolean;
+  controller: AbortController;
+  promise: Promise<void>;
+}
+const jobs = new Map<string, EvalJob>();
+let nextJobSeq = 1;
+const MAX_JOBS = 32;
+
+/** Running background eval jobs — surfaced by the TUI status bar. */
+export function countRunningEvalJobs(): number {
+  let running = 0;
+  for (const j of jobs.values()) if (j.finishedAt === null) running++;
+  return running;
+}
+
 /** eval: run a TS/JS snippet in a process sandbox (spawned bun subprocess,
  *  minimal env, hard timeout). The snippet must `export default (ctx) => out`
  *  where ctx is the JSON `input` object. Output is the returned value; stdout
  *  and stderr are reported alongside. Files written next to the script live
  *  only for the run unless keepWorkspace is set (cwd = workspace eval dir). */
 export function createEvalTool(_opts: { workspaceRoot: string }): Tool {
-  // Background job registry (per tool instance = per Run lifetime).
-  const jobs = new Map<string, EvalJob>();
-  let nextJobSeq = 1;
-  const MAX_JOBS = 32;
-
   function jobSummary(job: EvalJob): string {
     const state = job.finishedAt === null ? "running" : "completed";
     const secs = Math.round(((job.finishedAt ?? Date.now()) - job.startedAt) / 1000);

@@ -13,6 +13,8 @@ import {
   truncateToWidth,
   wrapTextWithAnsi,
 } from "@chengchenccc/tui";
+import { countRunningBashJobs } from "../../core/tools/bash.js";
+import { countRunningEvalJobs } from "../../core/tools/eval.js";
 import type { OmaTranscriptContainer } from "./tui-components.js";
 import {
   cleanHeaderTitle,
@@ -423,6 +425,11 @@ ${item.text ?? ""}`;
       segs.push({ text: this.headerModel, chip: true, bg: "\u001b[48;5;25m" });
     }
     segs.push({ text: formatWorkspace(this.workspaceRoot), fg: "\u001b[38;5;39m" });
+    // M-bash/M-eval: surface running background jobs (bash bg_N / eval eval_N).
+    const runningBg = countRunningBashJobs() + countRunningEvalJobs();
+    if (runningBg > 0) {
+      segs.push({ text: `⏵ ${runningBg} bg`, chip: true, bg: "\u001b[48;5;22m" });
+    }
     if (git) segs.push({ text: renderGitSegment(git) });
     if (this.headerSession) segs.push({ text: this.headerSession.slice(0, 8), fg: "\u001b[2m" });
     if (this.headerContext)

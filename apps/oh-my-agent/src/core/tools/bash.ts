@@ -46,6 +46,20 @@ async function cappedText(stream: ReadableStream<Uint8Array>): Promise<string> {
 
 // ─── Background jobs (M-bash) ──────────────────────────────────────────
 
+// Module-scope registry: session-wide for the TUI (jobs started in one
+// message stay pollable in later messages), per-process for the backend
+// (one oma process = one Run). Shared by every createBashTool instance.
+const jobs = new Map<string, BashJob>();
+let nextJobSeq = 1;
+const MAX_JOBS = 32;
+
+/** Running background bash jobs — surfaced by the TUI status bar. */
+export function countRunningBashJobs(): number {
+  let running = 0;
+  for (const j of jobs.values()) if (j.finishedAt === null) running++;
+  return running;
+}
+
 interface BashJob {
   id: string;
   command: string;
@@ -82,11 +96,6 @@ export function createBashTool(opts: {
 }): Tool {
   const sandbox = new WorkspaceSandbox(opts.workspaceRoot);
   const launcher = opts.sandbox ?? new NullBashSandbox(opts.workspaceRoot);
-
-  // Background job registry (per tool instance = per Run lifetime).
-  const jobs = new Map<string, BashJob>();
-  let nextJobSeq = 1;
-  const MAX_JOBS = 32;
 
   function startJob(
     command: string,
