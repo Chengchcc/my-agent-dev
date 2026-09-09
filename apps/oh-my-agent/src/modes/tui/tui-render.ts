@@ -439,8 +439,16 @@ ${item.text ?? ""}`;
     }
   }
 
+  /** Background job settlement (M-bash/M-eval): append a visible block
+   *  with the exit state and output tail. Native scrollback is
+   *  append-only, so this lands as a new transcript block rather than
+   *  rewriting the original "Backgrounded as job …" line. */
+  appendNotice(text: string): void {
+    this.transcript.addChild(new Text(`\u001b[36m  ⏵ ${text}\u001b[0m`, 0, 0));
+    this.tui.requestRender();
+  }
+
   renderIdleFooter(): void {
-    if (this.busy || this.statusContainer.children.length > 0) return;
     this.addStatusBar();
   }
 

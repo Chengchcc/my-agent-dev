@@ -20,6 +20,7 @@ import {
 } from "../../core/session/input-history.js";
 import type { SessionBranchNode } from "../../core/session/session-file.js";
 import type { ProjectSettings } from "../../core/settings/project-settings.js";
+import { setBgJobCompletionListener } from "../../core/tools/bg-jobs.js";
 import { runBashPtyConsole } from "./pty-console.js";
 import { SettingsOverlay } from "./settings-overlay.js";
 import { HistorySearchOverlay, OmaTranscriptContainer, PickerOverlay } from "./tui-components.js";
@@ -152,6 +153,18 @@ export function createTerminalIo(
   const statusContainer = new Container();
   const welcomeTip = WELCOME_TIPS[Math.floor(Math.random() * WELCOME_TIPS.length)] ?? "";
   const shell = new TuiRenderShell(tui, transcript, statusContainer, workspaceRoot, welcomeTip);
+  // M-bash/M-eval: background job settlements land as transcript blocks.
+  setBgJobCompletionListener((c) => {
+    const state = c.killed
+      ? "killed"
+      : c.timedOut
+        ? "timed out"
+        : c.exitCode === null
+          ? "finished"
+          : `exit ${c.exitCode}`;
+    const tail = c.output.trim();
+    shell.appendNotice(`${c.id} (${c.kind}) ${state}${tail ? `\n${tail}` : ""}`);
+  });
   const editorTheme: EditorTheme = {
     ...EDITOR_THEME,
     topBorder: (width: number): string => {

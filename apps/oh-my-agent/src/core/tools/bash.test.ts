@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createBashTool } from "./bash.js";
+import { setBgJobCompletionListener } from "./bg-jobs.js";
 
 const bashTool = createBashTool({ workspaceRoot: process.cwd() });
 
@@ -162,4 +163,26 @@ describe("bashTool", () => {
     expect(seen).toEqual([]); // async wins: no console overlay
     expect(started.content).toMatch(/Backgrounded as job bg_\d+/);
   }, 15_000);
+
+  test("bg job completion fires the settlement listener (M-bash)", async () => {
+    const events: Array<{ id: string; exitCode: number | null; isError: boolean }> = [];
+    setBgJobCompletionListener((c) => events.push(c));
+    const started = await bashTool.execute({
+      command: "echo listener-check",
+      async: true,
+      timeout: 10_000,
+    });
+    const jobId = /bg_\d+/.exec(started.content)?.[0] ?? "";
+    let settled = false;
+    for (let i = 0; i < 40 && !settled; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      settled = events.some((e) => e.id === jobId);
+    }
+    expect(settled).toBe(true);
+    const event = events.find((e) => e.id === jobId)!;
+    expect(event.kind).toBe("bash");
+    expect(event.exitCode).toBe(0);
+    expect(event.output).toContain("listener-check");
+    setBgJobCompletionListener(null);
+  });
 });

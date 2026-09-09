@@ -3,6 +3,7 @@ import type { Tool } from "@chengchenccc/message";
 import { ptyWrap, withPtyEnv } from "./bash-pty.js";
 import type { BashSandbox } from "./bash-sandbox.js";
 import { NullBashSandbox } from "./bash-sandbox.js";
+import { notifyBgJobCompletion } from "./bg-jobs.js";
 import { WorkspaceSandbox } from "./workspace-sandbox.js";
 
 const descriptionParam = {
@@ -146,6 +147,15 @@ export function createBashTool(opts: {
         job.exitCode = code;
         job.finishedAt = Date.now();
         if (job.timer) clearTimeout(job.timer);
+        notifyBgJobCompletion({
+          id: job.id,
+          kind: "bash",
+          exitCode: code,
+          timedOut: job.timedOut,
+          killed: job.killed,
+          output: job.output.slice(-2000),
+          isError: code !== 0 || job.timedOut,
+        });
       })
       .catch(() => {
         job.finishedAt = Date.now();

@@ -1,5 +1,6 @@
 import type { Tool } from "@chengchenccc/message";
 import { runInSandbox } from "@chengchenccc/sandbox";
+import { notifyBgJobCompletion } from "./bg-jobs.js";
 
 const descriptionParam = {
   type: "string" as const,
@@ -168,7 +169,7 @@ export function createEvalTool(_opts: { workspaceRoot: string }): Tool {
 
       const runCell = async (
         runnerSignal?: AbortSignal,
-      ): Promise<{ content: string; isError: boolean }> => {
+      ): Promise<{ content: string; isError: boolean; exitCode: number | null }> => {
         try {
           const r = await runInSandbox({
             code,
@@ -187,11 +188,13 @@ export function createEvalTool(_opts: { workspaceRoot: string }): Tool {
               ? parts.join("\n\n") || "(no output)"
               : `eval failed (exit ${r.exitCode}):\n${parts.join("\n\n")}`,
             isError: !ok,
+            exitCode: r.exitCode,
           };
         } catch (err) {
           return {
             content: `eval error: ${err instanceof Error ? err.message : String(err)}`,
             isError: true,
+            exitCode: null,
           };
         }
       };
@@ -225,6 +228,15 @@ export function createEvalTool(_opts: { workspaceRoot: string }): Tool {
           job.content = done.content;
           job.isError = done.isError;
           job.finishedAt = Date.now();
+          notifyBgJobCompletion({
+            id: job.id,
+            kind: "eval",
+            exitCode: done.exitCode,
+            timedOut: false,
+            killed: job.killed,
+            output: done.content.slice(-2000),
+            isError: done.isError,
+          });
         })();
         void job.promise.catch(() => {});
         return {
