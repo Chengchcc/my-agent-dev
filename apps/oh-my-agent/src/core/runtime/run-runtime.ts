@@ -173,6 +173,14 @@ export interface RunRuntimeDeps {
   /** HITL approval pipeline (spec): resolves the ask-mode gate and
    *  tools' options.request. Absent + ask = fail-closed error results. */
   approvalHandler?: ApprovalHandler;
+  /** M-bash: interactive pty console runner (TUI overlay). Present in TUI
+   *  mode only — pty:true bash calls hand off here; absent = headless
+   *  script-capture fallback. */
+  readonly bashPtyConsole?: (
+    command: string,
+    cwd: string,
+    env: Record<string, string>,
+  ) => Promise<{ exitCode: number | null; tail: string; killed: boolean }>;
 }
 
 export interface RunRuntime {
@@ -294,12 +302,18 @@ export async function assembleRunRuntime(deps: RunRuntimeDeps): Promise<RunRunti
   if (deps.workspaceAccess === "read_write") {
     fileTools.push(createWriteTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool);
     fileTools.push(createEditTool({ cwd: deps.workspaceRoot }) as unknown as PluginTool);
-    fileTools.push(
-      createBashTool({
-        workspaceRoot: deps.workspaceRoot,
-        ...(bashSandbox ? { sandbox: bashSandbox } : {}),
-      }) as unknown as PluginTool,
-    );
+    const bashToolOpts: {
+      workspaceRoot: string;
+      sandbox?: BashSandbox;
+      ptyConsole?: (
+        command: string,
+        cwd: string,
+        env: Record<string, string>,
+      ) => Promise<{ exitCode: number | null; tail: string; killed: boolean }>;
+    } = { workspaceRoot: deps.workspaceRoot };
+    if (bashSandbox) bashToolOpts.sandbox = bashSandbox;
+    if (deps.bashPtyConsole) bashToolOpts.ptyConsole = deps.bashPtyConsole;
+    fileTools.push(createBashTool(bashToolOpts) as unknown as PluginTool);
     fileTools.push(createEvalTool({ workspaceRoot: deps.workspaceRoot }) as unknown as PluginTool);
   }
   // Generic .mcp.json mounting (ADR 0022): user servers + knowledge.

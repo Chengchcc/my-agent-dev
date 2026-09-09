@@ -127,6 +127,13 @@ export interface TuiIo {
   /** Update the fixed header's model/session line. `context` is sticky:
    *  once set it stays until the next value arrives. */
   setHeader?(info: { model?: string; sessionId?: string; title?: string; context?: string }): void;
+  /** M-bash: interactive pty console overlay (TUI only). Resolves when
+   *  the command exits or the user kills it (Esc). */
+  runPtyConsole?(
+    command: string,
+    cwd: string,
+    env: Record<string, string>,
+  ): Promise<{ exitCode: number | null; tail: string; killed: boolean }>;
   /** Prefill the editor text (used for `oma "<prompt>"`). */
   setInputText?(text: string): void;
   /** True while the terminal window holds focus (CSI 1004 reporting).
@@ -350,6 +357,8 @@ export async function runTuiSession(opts: TuiModeOptions, io: TuiIo): Promise<nu
       modelRuntime: opts.modelRuntime,
       skillRoots: built.run.skillRoots ?? [],
       gateWorkspaceMcp: true,
+      // M-bash: pty:true bash calls open the interactive console overlay.
+      bashPtyConsole: (command, cwd, env) => io.runPtyConsole!(command, cwd, env),
       // HITL: interactive approval overlay; absent picker or cancel = deny.
       approvalHandler: async (req) => {
         const verdict = await io.confirmApproval?.({

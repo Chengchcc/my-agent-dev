@@ -20,7 +20,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "biome check . && eslint .",
-    "test": "bun test --pass-with-no-tests",
+    "test": "bun test src --pass-with-no-tests",
     "typecheck": "tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {

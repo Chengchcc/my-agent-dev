@@ -1,5 +1,6 @@
 import { childEnv } from "@chengchenccc/agent-contract";
 import type { Tool } from "@chengchenccc/message";
+import { ptyWrap, withPtyEnv } from "./bash-pty.js";
 import type { BashSandbox } from "./bash-sandbox.js";
 import { NullBashSandbox } from "./bash-sandbox.js";
 import { WorkspaceSandbox } from "./workspace-sandbox.js";
@@ -60,25 +61,24 @@ interface BashJob {
   timer: ReturnType<typeof setTimeout> | null;
 }
 
-function shellQuote(s: string): string {
-  return `'${s.replaceAll("'", `'\\''`)}'`;
-}
-
-/** Wrap a command so it runs with a real pseudo-terminal (script -e keeps
- *  the exit code). util-linux (Linux) and BSD script (macOS) differ. */
-function ptyWrap(command: string): string | null {
-  const script = Bun.which("script");
-  if (!script) return null;
-  if (process.platform === "darwin") {
-    return `${script} -q /dev/null ${shellQuote(command)}`;
-  }
-  return `${script} -qec ${shellQuote(command)} /dev/null`;
+export interface BashPtyResult {
+  exitCode: number | null;
+  /** Last captured output tail (capped) for the model summary. */
+  tail: string;
+  killed: boolean;
 }
 
 export function createBashTool(opts: {
   workspaceRoot: string;
   /** Launch strategy; default Null = current unconstrained behavior. */
   sandbox?: BashSandbox;
+  /** M-bash: interactive pty runner (TUI console overlay). When present,
+   *  pty:true delegates here instead of the headless script capture. */
+  ptyConsole?: (
+    command: string,
+    cwd: string,
+    env: Record<string, string>,
+  ) => Promise<BashPtyResult>;
 }): Tool {
   const sandbox = new WorkspaceSandbox(opts.workspaceRoot);
   const launcher = opts.sandbox ?? new NullBashSandbox(opts.workspaceRoot);
@@ -274,20 +274,12 @@ export function createBashTool(opts: {
       const bashEnv: Record<string, string> = Object.fromEntries(
         Object.entries(childEnv()).filter(([k]) => !BASH_ENV_DENY.test(k)),
       );
-
-      // Background execution (M-bash): return a job id immediately; the
-      // model polls via jobAction=output. pty does not apply to jobs.
       let notice = "";
       let effectiveCommand = command;
-      if (pty) {
-        const wrapped = ptyWrap(command);
-        if (wrapped === null) {
-          notice = "pty requested but unavailable in this environment; ran without a terminal";
-        } else {
-          effectiveCommand = wrapped;
-          bashEnv.TERM = "xterm-256color";
-        }
-      }
+
+      // Background execution (M-bash): return a job id immediately; the
+      // model polls via jobAction=output. Runs BEFORE pty handling (pi
+      // ordering: async wins, jobs stay headless).
       if ((input as { async?: boolean }).async === true) {
         if (jobs.size >= MAX_JOBS) {
           return {
@@ -302,6 +294,32 @@ export function createBashTool(opts: {
         return {
           content: `${tail}Backgrounded as job ${job.id}; fetch output with bash { "jobAction": "output", "jobId": "${job.id}" }.`,
         };
+      }
+
+      // Interactive pty (M-bash): when a TUI console runner is injected,
+      // pty:true hands the command to the overlay (user-interactive).
+      if (pty && opts.ptyConsole) {
+        const done = await opts.ptyConsole(command, validatedCwd, withPtyEnv(bashEnv));
+        const tail = done.tail.trim();
+        const failed = !done.killed && done.exitCode !== null && done.exitCode !== 0;
+        const flag = done.killed
+          ? " (killed)"
+          : failed
+            ? ` — Command exited with code ${done.exitCode}`
+            : "";
+        return {
+          content: `${tail}${tail ? "\n" : ""}pty session finished (exit: ${done.exitCode ?? "signal"})${flag}`,
+          isError: failed,
+        };
+      }
+      if (pty) {
+        const wrapped = ptyWrap(command);
+        if (wrapped === null) {
+          notice = "pty requested but unavailable in this environment; ran without a terminal";
+        } else {
+          effectiveCommand = wrapped;
+          Object.assign(bashEnv, withPtyEnv({}));
+        }
       }
       const proc = launcher.spawn(effectiveCommand, { cwd: validatedCwd, env: bashEnv });
 

@@ -11,6 +11,7 @@ export {
   type SlashCommand,
 } from "./autocomplete.ts";
 // Components
+export { AnsiConsole } from "./components/ansi-console.ts";
 export { Box } from "./components/box.ts";
 export { Card, type CardOptions } from "./components/card.ts";
 export {

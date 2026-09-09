@@ -15,7 +15,7 @@ import { extractAutonomousMemory, type MemoryLearnResult } from "../memory/auton
 import type { PluginMcpConfig } from "../plugins/plugin-resolve.js";
 import type { ApprovalHandler } from "./approval.js";
 import type { Plugin } from "./plugin.js";
-import { assembleRunRuntime, type RunRuntime } from "./run-runtime.js";
+import { assembleRunRuntime, type RunRuntime, type RunRuntimeDeps } from "./run-runtime.js";
 import type { ToolFilter } from "./tool-filter.js";
 
 /** The single Runtime assembly entry point for the Oma product.
@@ -58,6 +58,12 @@ export interface CreateOmaRuntimeOptions {
   gateWorkspaceMcp?: boolean;
   /** HITL approval pipeline; absent + ask = fail-closed. */
   approvalHandler?: ApprovalHandler;
+  /** M-bash: interactive pty console runner (TUI overlay). */
+  bashPtyConsole?: (
+    command: string,
+    cwd: string,
+    env: Record<string, string>,
+  ) => Promise<{ exitCode: number | null; tail: string; killed: boolean }>;
 }
 
 /** One Runtime = one Run. The loop runs directly in-process; steer injects
@@ -141,13 +147,14 @@ function mapLoopResult(result: OmaLoopResult): BackendRunOutcome {
 }
 
 export async function createOmaRuntime(options: CreateOmaRuntimeOptions): Promise<OmaRuntime> {
-  const rt: RunRuntime = await assembleRunRuntime({
+  const rtArgs: RunRuntimeDeps = {
     workspaceRoot: options.workspaceRoot,
     workspaceAccess: options.workspaceAccess,
     runId: options.runId,
     modelRuntime: options.modelRuntime,
     modelId: options.modelId,
     skillRoots: options.skillRoots,
+    bashPtyConsole: options.bashPtyConsole,
     ...(options.onPersistMessages ? { onPersistMessages: options.onPersistMessages } : {}),
     ...(options.pluginComponents?.plugins.length
       ? { codePlugins: options.pluginComponents.plugins }
@@ -159,7 +166,8 @@ export async function createOmaRuntime(options: CreateOmaRuntimeOptions): Promis
       : {}),
     ...(options.permissionMode ? { permissionMode: options.permissionMode } : {}),
     ...(options.toolFilter ? { toolFilter: options.toolFilter } : {}),
-  });
+  };
+  const rt: RunRuntime = await assembleRunRuntime(rtArgs);
 
   let stopRequested = false;
   let started = false;

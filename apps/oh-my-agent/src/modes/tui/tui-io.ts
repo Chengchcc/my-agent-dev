@@ -20,6 +20,7 @@ import {
 } from "../../core/session/input-history.js";
 import type { SessionBranchNode } from "../../core/session/session-file.js";
 import type { ProjectSettings } from "../../core/settings/project-settings.js";
+import { runBashPtyConsole } from "./pty-console.js";
 import { SettingsOverlay } from "./settings-overlay.js";
 import { HistorySearchOverlay, OmaTranscriptContainer, PickerOverlay } from "./tui-components.js";
 import { EDITOR_THEME, relativeTime, WELCOME_TIPS } from "./tui-format.js";
@@ -670,6 +671,9 @@ export function createTerminalIo(
       });
       const handle = tui.showOverlay(box, { width: "70%", anchor: "center" });
       return promise;
+    },
+    runPtyConsole(command, cwd, env) {
+      return runBashPtyConsole(tui, { command, cwd, env });
     },
     setHeader(info) {
       shell.setHeader(info.model ?? "", info.sessionId ?? "", info.title ?? "", info.context);

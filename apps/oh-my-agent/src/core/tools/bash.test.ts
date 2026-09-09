@@ -126,4 +126,40 @@ describe("bashTool", () => {
     });
     expect(withoutPty.content).toContain("NO_TTY");
   }, 20_000);
+
+  test("ptyConsole override routes pty calls to the interactive runner", async () => {
+    const seen: string[] = [];
+    const tool = createBashTool({
+      workspaceRoot: process.cwd(),
+      ptyConsole: async (command) => {
+        seen.push(command);
+        return { exitCode: 3, tail: "console output tail", killed: true };
+      },
+    });
+    const result = await tool.execute({ command: "vim notes.txt", pty: true });
+    expect(seen).toEqual(["vim notes.txt"]);
+    expect(result.content).toInclude("pty session finished");
+    expect(result.content).toInclude("console output tail");
+    expect(result.content).toInclude("killed");
+    expect(result.isError).toBe(false); // killed ≠ non-zero exit
+  });
+
+  test("async jobs ignore pty and stay headless", async () => {
+    const seen: string[] = [];
+    const tool = createBashTool({
+      workspaceRoot: process.cwd(),
+      ptyConsole: async (command) => {
+        seen.push(command);
+        return { exitCode: 0, tail: "", killed: false };
+      },
+    });
+    const started = await tool.execute({
+      command: "echo job-ok",
+      async: true,
+      pty: true,
+      timeout: 10_000,
+    });
+    expect(seen).toEqual([]); // async wins: no console overlay
+    expect(started.content).toMatch(/Backgrounded as job bg_\d+/);
+  }, 15_000);
 });
