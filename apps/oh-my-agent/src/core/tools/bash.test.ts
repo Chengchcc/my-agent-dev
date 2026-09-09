@@ -63,4 +63,67 @@ describe("bashTool", () => {
     expect(result.isError).toBe(true);
     await Bun.$`rm -rf ${tmpDir}`.quiet();
   });
+
+  test("jobAction=list with no jobs", async () => {
+    const result = await bashTool.execute({ command: "", jobAction: "list" });
+    expect(result.content).toInclude("no background jobs");
+  });
+
+  test("async=true backgrounds a job; output pollable via jobAction", async () => {
+    const started = await bashTool.execute({
+      command: "echo bg-hello && sleep 5",
+      async: true,
+      timeout: 20_000,
+    });
+    expect(started.content).toMatch(/Backgrounded as job bg_\d+/);
+    const jobId = /bg_\d+/.exec(started.content)?.[0] ?? "";
+    expect(started.content).not.toInclude("bg-hello");
+
+    // Eventually the output tail captures the echo.
+    let polled = "";
+    for (let i = 0; i < 40 && !polled.includes("bg-hello"); i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      polled = (await bashTool.execute({ command: "", jobAction: "output", jobId })).content;
+    }
+    expect(polled).toContain("bg-hello");
+
+    // Kill it before sleep finishes.
+    const killed = await bashTool.execute({ command: "", jobAction: "kill", jobId });
+    expect(killed.content).toInclude("Killed");
+  }, 20_000);
+
+  test("background job timeout kills the job (M-bash)", async () => {
+    const started = await bashTool.execute({
+      command: "sleep 30",
+      async: true,
+      timeout: 300,
+    });
+    const jobId = /bg_\d+/.exec(started.content)?.[0] ?? "";
+    let summary = "";
+    for (let i = 0; i < 60 && !summary.includes("completed"); i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      summary = (await bashTool.execute({ command: "", jobAction: "output", jobId })).content;
+    }
+    expect(summary).toContain("timed out");
+  }, 15_000);
+
+  test("unknown jobId errors", async () => {
+    const result = await bashTool.execute({ command: "", jobAction: "output", jobId: "bg_999" });
+    expect(result.isError).toBe(true);
+    expect(result.content).toInclude("unknown job");
+  });
+
+  test("pty=true allocates a real TTY (M-bash)", async () => {
+    if (Bun.which("script") === null) return;
+    const withPty = await bashTool.execute({
+      command: "test -t 0 && echo IS_TTY || echo NO_TTY",
+      pty: true,
+    });
+    expect(withPty.content).toContain("IS_TTY");
+    // Control: the default pipe path is NOT a TTY.
+    const withoutPty = await bashTool.execute({
+      command: "test -t 0 && echo IS_TTY || echo NO_TTY",
+    });
+    expect(withoutPty.content).toContain("NO_TTY");
+  }, 20_000);
 });
