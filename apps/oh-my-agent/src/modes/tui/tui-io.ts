@@ -154,6 +154,22 @@ export function createTerminalIo(
   const welcomeTip = WELCOME_TIPS[Math.floor(Math.random() * WELCOME_TIPS.length)] ?? "";
   const shell = new TuiRenderShell(tui, transcript, statusContainer, workspaceRoot, welcomeTip);
   // M-bash/M-eval: background job settlements land as transcript blocks.
+  // Completions are debounced 1.5s so a finishing batch lands as ONE
+  // injected message. OMA_BG_INJECT=0 degrades to transcript notices
+  // (model never sees them; poll via jobAction instead).
+  const injections: string[] = [];
+  function injectUserMessage(text: string): void {
+    // Prefer a live waiter; otherwise queue for the next waitForInput.
+    if (pending) {
+      const resolve = pending;
+      pending = null;
+      resolve(text);
+      return;
+    }
+    injections.push(text);
+  }
+  const bgPending: string[] = [];
+  let bgDebounce: ReturnType<typeof setTimeout> | undefined;
   setBgJobCompletionListener((c) => {
     const state = c.killed
       ? "killed"
@@ -163,7 +179,19 @@ export function createTerminalIo(
           ? "finished"
           : `exit ${c.exitCode}`;
     const tail = c.output.trim();
-    shell.appendNotice(`${c.id} (${c.kind}) ${state}${tail ? `\n${tail}` : ""}`);
+    bgPending.push(`${c.id} (${c.kind}) ${state}${tail ? `\n${tail}` : ""}`);
+    if (bgDebounce) clearTimeout(bgDebounce);
+    if (process.env.OMA_BG_INJECT === "0") {
+      shell.appendNotice(bgPending.join("\n\n"));
+      bgPending.length = 0;
+      return;
+    }
+    bgDebounce = setTimeout(() => {
+      const joined = bgPending.join("\n\n---\n\n");
+      bgPending.length = 0;
+      if (joined) injectUserMessage(`[background jobs finished]\n${joined}`);
+    }, 1_500);
+    bgDebounce.unref?.();
   });
   const editorTheme: EditorTheme = {
     ...EDITOR_THEME,
@@ -431,10 +459,13 @@ export function createTerminalIo(
       shell.render(state);
     },
     waitForInput() {
+      const queued = injections.shift();
+      if (queued !== undefined) return Promise.resolve(queued);
       return new Promise<string | null>((resolve) => {
         pending = resolve;
       });
     },
+
     setBusy(next: boolean) {
       busy = next;
       // The animated status line: a braille spinner + "working (Ns)" while
