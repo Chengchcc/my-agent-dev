@@ -10,6 +10,8 @@ export default tseslint.config(
       "**/.turbo/**",
       "**/.next/**",
       "**/.backend-data/**",
+      // Vendored third-party artifacts (predev-generated monaco mirror).
+      "apps/web/public/**",
       "apps/web/scripts/**",
       "**/next-env.d.ts",
       "bun.lock",

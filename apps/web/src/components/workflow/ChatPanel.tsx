@@ -84,7 +84,7 @@ export function ChatPanel({
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {empty ? (
-          <div className="px-3 py-3">
+          <div className="p-3 ">
             <div className="rounded-lg border border-dashed border-(--hairline) bg-(--canvas-soft)/40 p-3">
               <p className="mb-1.5 text-xs text-(--mute)">
                 Describe a change and the agent will propose it — you review and save on the left.
