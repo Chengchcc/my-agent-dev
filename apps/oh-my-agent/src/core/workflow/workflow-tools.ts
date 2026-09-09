@@ -73,6 +73,8 @@ function parseItem(raw: unknown): WorkflowAgentSpec {
 }
 
 export function createWorkflowTools(deps: WorkflowToolDeps): readonly PluginTool[] {
+  const MAX_BATCH_TASKS = 8;
+  const BATCH_CONCURRENCY = 4;
   const runWorkflow: PluginTool = {
     name: "run_workflow",
     description:
@@ -163,29 +165,165 @@ export function createWorkflowTools(deps: WorkflowToolDeps): readonly PluginTool
   const task: PluginTool = {
     name: "task",
     description:
-      "Dispatch ONE named subagent as a task and get its final answer. Roles: " +
-      "explore (read-only investigation), worker (full file tools), or any " +
-      ".oma/agents/<name>.md definition in the workspace. " +
-      "Args: {agent, prompt, schema?, background?}. The result carries a " +
-      "handle; pass {resume: <handle>, prompt} to continue the SAME subagent " +
-      "with a follow-up. background:true returns immediately with the handle " +
-      "(poll it via task_output). For parallel fan-out use run_workflow.",
+      "Fan out subagents. BATCH (preferred): {context, tasks:[{name?, agent?, task, outputSchema?}]} — " +
+      "context is shared background injected into every spawn; items run concurrently (max 4); " +
+      "per-item text is capped at 5000 chars. Roles: task (full tools), explore (read-only), " +
+      "plan (read-only planning), worker (full file tools), or any .oma/agents/<name>.md definition. " +
+      "SINGLE (compat): {agent, prompt, schema?, background?, resume?} — background:true returns a " +
+      "handle immediately (poll via task_output); {resume, prompt} continues the SAME subagent.",
     executionMode: "serial",
     inputSchema: {
       type: "object",
       properties: {
+        context: {
+          type: "string",
+          description:
+            "BATCH: shared background injected into every spawn's prompt (required with tasks)",
+        },
+        tasks: {
+          type: "array",
+          minItems: 1,
+          maxItems: 8,
+          description: "BATCH: one subagent per item",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string", description: "Stable label for the handle/result" },
+              agent: { type: "string", description: "Role (default task)" },
+              task: { type: "string", description: "Self-contained instructions" },
+              outputSchema: { type: "object", description: "JSON schema for the final answer" },
+            },
+            required: ["task"],
+          },
+        },
         agent: { type: "string" },
         prompt: { type: "string" },
         schema: { type: "object" },
         resume: { type: "string" },
         background: { type: "boolean" },
       },
+      // BATCH: context + tasks required; runtime enforces. SINGLE (compat):
       // agent XOR resume (with prompt required either way); runtime enforces.
     },
     async execute(args, signal) {
       const agent = typeof args.agent === "string" ? args.agent.trim() : "";
       const prompt = typeof args.prompt === "string" ? args.prompt : "";
       const resume = typeof args.resume === "string" ? args.resume.trim() : "";
+
+      // Batch fan-out (pi task.batch shape): required shared context +
+      // per-item spawns under bounded concurrency. Flat single-spawn
+      // params stay accepted (pi runtime is permissive across shapes).
+      if (Array.isArray(args.tasks)) {
+        const context = typeof args.context === "string" ? args.context.trim() : "";
+        if (!context) {
+          return {
+            ok: false,
+            error: "context is required for batch calls (shared background for every spawn)",
+          };
+        }
+        const items = args.tasks as Array<Record<string, unknown>>;
+        if (items.length === 0) return { ok: false, error: "tasks must be a non-empty array" };
+        if (items.length > MAX_BATCH_TASKS) {
+          return { ok: false, error: `too many tasks (${items.length}; max ${MAX_BATCH_TASKS})` };
+        }
+        const seen = new Set<string>();
+        for (const item of items) {
+          if (typeof item.task !== "string" || item.task.trim() === "") {
+            return { ok: false, error: "each task item needs a non-empty task" };
+          }
+          if (typeof item.name === "string" && item.name.trim() !== "") {
+            const key = item.name.trim().toLowerCase();
+            if (seen.has(key)) {
+              return { ok: false, error: `duplicate task name "${item.name.trim()}"` };
+            }
+            seen.add(key);
+          }
+        }
+        // Resolve roles upfront: one unknown role fails the whole call
+        // before any spawn (pi-aligned validation shape).
+        const metas: Array<{
+          label: string;
+          agent: string;
+          task: string;
+          schema?: Readonly<Record<string, unknown>>;
+          systemPrompt: string;
+          tools?: readonly string[];
+          modelId?: string;
+        }> = [];
+        for (const item of items) {
+          const agent =
+            typeof item.agent === "string" && item.agent.trim() !== "" ? item.agent.trim() : "task";
+          const def = await resolveAgent(agent, deps.readAgentDefinition);
+          if (!def) {
+            return {
+              ok: false,
+              error: `unknown subagent "${agent}" (builtin: ${builtinAgentNames().join(", ")}; or .oma/agents/<name>.md)`,
+            };
+          }
+          metas.push({
+            label:
+              typeof item.name === "string" && item.name.trim() !== ""
+                ? item.name.trim()
+                : `${agent}-${metas.length + 1}`,
+            agent,
+            task: item.task as string,
+            schema:
+              typeof item.outputSchema === "object" &&
+              item.outputSchema !== null &&
+              !Array.isArray(item.outputSchema)
+                ? (item.outputSchema as Readonly<Record<string, unknown>>)
+                : undefined,
+            systemPrompt: def.systemPrompt,
+            tools: def.tools,
+            modelId: def.modelId,
+          });
+        }
+        const results: Array<Record<string, unknown>> = [];
+        let next = 0;
+        const workers = Array.from(
+          { length: Math.min(BATCH_CONCURRENCY, metas.length) },
+          async () => {
+            for (;;) {
+              const index = next++;
+              if (index >= metas.length) return;
+              const meta = metas[index]!;
+              const result = await deps.runSubagent(
+                {
+                  prompt: `${context}\n\n---\n\n${meta.task}`,
+                  label: meta.label,
+                  ...(meta.schema ? { schema: meta.schema } : {}),
+                  systemPrompt: meta.systemPrompt,
+                  ...(meta.tools ? { toolNames: meta.tools } : {}),
+                  ...(meta.modelId ? { modelId: meta.modelId } : {}),
+                },
+                signal,
+              );
+              results[index] = {
+                index: index + 1,
+                name: meta.label,
+                agent: meta.agent,
+                ok: result.ok,
+                text: (result.text ?? "").slice(0, 5000),
+                ...(result.output !== undefined ? { output: result.output } : {}),
+                ...(result.error ? { error: result.error } : {}),
+                ...(result.usage ? { usage: result.usage } : {}),
+                ...(result.handle ? { handle: result.handle } : {}),
+                ...(result.resultPath ? { resultPath: result.resultPath } : {}),
+              };
+            }
+          },
+        );
+        await Promise.all(workers);
+        const lines = results.map(
+          (r, i) =>
+            `${i + 1}. ${r.name} (${r.agent}) — ${r.ok ? "ok" : "error"}\n${String(r.text ?? r.error ?? "")}`,
+        );
+        return {
+          ok: results.every((r) => r.ok !== false),
+          content: lines.join("\n\n"),
+          results,
+        };
+      }
       if (!prompt) return { ok: false, error: "prompt is required" };
       if (resume) {
         const result = await deps.runSubagent(

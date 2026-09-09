@@ -37,6 +37,57 @@ const subagentListTool = tools.find((t) => t.name === "task_list")!;
 const subagentOutputTool = tools.find((t) => t.name === "task_output")!;
 const subagentStopTool = tools.find((t) => t.name === "task_stop")!;
 
+describe("task batch fan-out (pi shape)", () => {
+  test("runs items concurrently with shared context prepended to every spawn", async () => {
+    subagentCalls.length = 0;
+    const result = (await subagentTool.execute({
+      context: "SHARED-BG",
+      tasks: [
+        { name: "one", agent: "explore", task: "investigate A" },
+        { name: "two", agent: "task", task: "investigate B", outputSchema: { type: "object" } },
+      ],
+    })) as { content: string; results: Array<{ name: string; ok: boolean }> };
+    expect(result.ok).toBe(true);
+    expect(result.results.map((r) => r.name)).toEqual(["one", "two"]);
+    expect(subagentCalls).toHaveLength(2);
+    expect(subagentCalls[0]!.spec.prompt).toContain("SHARED-BG");
+    expect(subagentCalls[0]!.spec.prompt).toContain("investigate A");
+    expect(subagentCalls[1]!.spec.schema).toEqual({ type: "object" });
+    expect(subagentCalls[1]!.spec.systemPrompt).toContain("general-purpose task subagent");
+  });
+
+  test("validates batch shape before spawning", async () => {
+    subagentCalls.length = 0;
+    const missingContext = (await subagentTool.execute({
+      tasks: [{ task: "x" }],
+    })) as { error: string };
+    expect(missingContext.error).toContain("context is required");
+    const emptyTasks = (await subagentTool.execute({ context: "c", tasks: [] })) as {
+      error: string;
+    };
+    expect(emptyTasks.error).toContain("non-empty");
+    const dup = (await subagentTool.execute({
+      context: "c",
+      tasks: [
+        { task: "a", name: "same" },
+        { task: "b", name: "same" },
+      ],
+    })) as { error: string };
+    expect(dup.error).toContain("duplicate task name");
+    expect(subagentCalls.length).toBe(0);
+  });
+
+  test("unknown role fails the whole call before any spawn", async () => {
+    subagentCalls.length = 0;
+    const result = (await subagentTool.execute({
+      context: "c",
+      tasks: [{ agent: "mystery", task: "x" }],
+    })) as { error: string };
+    expect(result.error).toContain('unknown subagent "mystery"');
+    expect(subagentCalls.length).toBe(0);
+  });
+});
+
 describe("workflow_run", () => {
   test("saves a script and re-runs it by name only (B8)", async () => {
     const first = (await runScriptTool.execute({ script: "const a = 1;", name: "audit" })) as {
