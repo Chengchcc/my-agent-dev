@@ -40,6 +40,9 @@ export interface SandboxInput {
      *  skipped. */
     denyReadDirs?: readonly string[];
   };
+  /** Abort kills the process tree immediately (the run resolves with a
+   *  non-zero exit, timedOut stays false). */
+  signal?: AbortSignal;
 }
 
 export interface SandboxResult {
@@ -202,7 +205,10 @@ export function buildWrappedArgv(
 }
 
 export async function runInSandbox(input: SandboxInput): Promise<SandboxResult> {
-  const timeoutMs = input.timeoutMs ?? 30_000;
+  // pi semantics: 0 disables the deadline entirely (a cell may legitimately
+  // run long); undefined keeps the historical 30s default.
+  const timeoutMs = input.timeoutMs === 0 ? 0 : (input.timeoutMs ?? 30_000);
+  const hasDeadline = timeoutMs > 0;
   const dir = input.cwd ?? mkTempDir();
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "script.ts"), input.code);
@@ -271,12 +277,14 @@ export async function runInSandbox(input: SandboxInput): Promise<SandboxResult> 
       }
     };
     let escalation: Timer | undefined;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      killTree("SIGTERM");
-      escalation = setTimeout(() => killTree("SIGKILL"), 2_000);
-      escalation.unref?.();
-    }, timeoutMs);
+    const timer = hasDeadline
+      ? setTimeout(() => {
+          timedOut = true;
+          killTree("SIGTERM");
+          escalation = setTimeout(() => killTree("SIGKILL"), 2_000);
+          escalation.unref?.();
+        }, timeoutMs)
+      : undefined;
     // H3: completion is gated on proc.exited, NEVER on pipe EOF.
     const exitCode = await exited;
     clearTimeout(timer);
